@@ -1,0 +1,87 @@
+# ingress-nginx Helm values for K3s on ARM64
+# Deploy via: helm install ingress-nginx ingress-nginx/ingress-nginx \
+#   --namespace ingress-nginx --create-namespace \
+#   --version 4.11.3 \
+#   --values k8s/base/ingress-nginx/helm-values.yaml
+#
+# Verify ARM64 support: ingress-nginx has supported linux/arm64 since v1.0
+# Image: registry.k8s.io/ingress-nginx/controller (multi-arch)
+
+controller:
+  image:
+    # Fully qualified, ARM64-compatible image
+    registry: registry.k8s.io
+    image: ingress-nginx/controller
+    tag: v1.12.0
+    pullPolicy: IfNotPresent
+    # Digest pinning optional but recommended for production
+    # digest: sha256:<digest>
+
+  # Use K3s's built-in ServiceLB (klipper-lb) for LoadBalancer type.
+  # This assigns the node IP as the external IP for the service.
+  service:
+    type: LoadBalancer
+    externalTrafficPolicy: Local
+    annotations: {}
+
+  # Resource limits tuned for the ARM A2.Flex worker nodes (4 OCPU / 6-12 GB)
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  # Run as a single replica for PoC; increase to 2+ for production.
+  replicaCount: 1
+
+  # Pod disruption budget
+  minAvailable: 1
+
+  # ConfigMap for nginx tuning
+  config:
+    # Use real client IP from X-Forwarded-For (set by Caddy at edge)
+    use-forwarded-headers: "true"
+    compute-full-forwarded-for: "true"
+    use-proxy-protocol: "false"
+    # HTTPS redirect
+    force-ssl-redirect: "false"
+    # Worker processes
+    worker-processes: "2"
+    # Log format
+    log-format-upstream: >-
+      $remote_addr - $remote_user [$time_local] "$request"
+      $status $body_bytes_sent "$http_referer" "$http_user_agent"
+      $request_length $request_time [$proxy_upstream_name]
+      [$proxy_alternative_upstream_name] $upstream_addr
+      $upstream_response_length $upstream_response_time $upstream_status $req_id
+
+  # Metrics for Prometheus/VictoriaMetrics scraping
+  metrics:
+    enabled: true
+    service:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "10254"
+
+  # Node affinity for ARM64 nodes
+  nodeSelector:
+    kubernetes.io/arch: arm64
+
+defaultBackend:
+  enabled: true
+  image:
+    registry: registry.k8s.io
+    image: defaultbackend-arm64
+    tag: "1.5"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 5m
+      memory: 16Mi
+    limits:
+      cpu: 50m
+      memory: 32Mi
+  nodeSelector:
+    kubernetes.io/arch: arm64

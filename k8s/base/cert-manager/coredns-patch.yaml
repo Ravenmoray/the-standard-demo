@@ -1,0 +1,68 @@
+# CoreDNS ConfigMap patch for demo.internal internal domain
+#
+# This patch adds a forward stanza to CoreDNS so that:
+# 1. The cluster can resolve *.demo.internal hostnames
+# 2. cert-manager's ACME HTTP-01 self-check resolves app.demo.internal
+#    to the ingress-nginx LoadBalancer IP (required for step-ca validation)
+#
+# LESSON 3.1 from oracle-k8 gap analysis:
+# "The CoreDNS patch (adding a forward stanza for oracle-k8.internal pointing
+#  to FreeIPA BIND) was essential for cert-manager's HTTP-01 self-check to
+#  resolve internal hostnames."
+#
+# In this deployment, instead of forwarding to an external DNS server,
+# we use CoreDNS's own 'hosts' plugin to directly resolve app.demo.internal
+# to the ingress-nginx service IP. This avoids needing a separate internal
+# DNS server entirely.
+#
+# APPLY WITH:
+#   kubectl patch configmap coredns -n kube-system --patch-file k8s/base/cert-manager/coredns-patch.yaml
+#
+# OR apply via Ansible after K3s bootstrap (recommended):
+#   kubectl apply -f k8s/base/cert-manager/coredns-patch-full.yaml
+#
+# The INGRESS_IP placeholder must be replaced with the actual ingress-nginx
+# LoadBalancer IP before applying. Retrieve it with:
+#   kubectl get svc -n ingress-nginx ingress-nginx-controller \
+#     -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+#
+# This is a kustomize strategic merge patch for the CoreDNS ConfigMap.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns
+  namespace: kube-system
+data:
+  Corefile: |
+    .:53 {
+        errors
+        health {
+           lameduck 5s
+        }
+        ready
+        kubernetes cluster.local in-addr.arpa ip6.arpa {
+           pods insecure
+           fallthrough in-addr.arpa ip6.arpa
+           ttl 30
+        }
+        prometheus :9153
+        forward . /etc/resolv.conf {
+           max_concurrent 1000
+        }
+        cache 30
+        loop
+        reload
+        loadbalance
+    }
+
+    demo.internal:53 {
+        errors
+        cache 30
+        # Static host entries for demo.internal
+        # IMPORTANT: Replace INGRESS_IP with the actual ingress-nginx LoadBalancer IP.
+        # This IP is assigned by K3s's built-in ServiceLB (klipper-lb) or MetalLB.
+        hosts {
+            INGRESS_IP app.demo.internal
+            fallthrough
+        }
+    }

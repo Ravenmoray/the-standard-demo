@@ -1,0 +1,54 @@
+# /etc/ssh/sshd_config.d/99-hardening.conf
+# Managed by Ansible (hardening role). Do not edit manually.
+# Drop-in config — overrides defaults from /etc/ssh/sshd_config.
+# Survives sshd package updates that may reset the main config file.
+
+# ── Authentication ────────────────────────────────────────────────────────────
+PermitRootLogin no
+PasswordAuthentication no
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+KbdInteractiveAuthentication no
+
+# ── Protocol and ciphers ──────────────────────────────────────────────────────
+Protocol 2
+
+# Key exchange: only modern ECDH and Diffie-Hellman with SHA-2
+KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group14-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,ecdh-sha2-nistp521,ecdh-sha2-nistp384,ecdh-sha2-nistp256
+
+# Ciphers: AEAD only — ChaCha20-Poly1305 and AES-GCM variants
+Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr
+
+# MACs: encrypt-then-MAC only
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com
+
+# Host keys: Ed25519 preferred, RSA 4096 as fallback
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_rsa_key
+
+# ── Connection limits ─────────────────────────────────────────────────────────
+MaxAuthTries 3
+MaxSessions 4
+LoginGraceTime 30
+ClientAliveInterval 300
+ClientAliveCountMax 2
+
+# ── Forwarding restrictions ───────────────────────────────────────────────────
+AllowAgentForwarding no
+AllowTcpForwarding no
+X11Forwarding no
+PermitTunnel no
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+SyslogFacility AUTHPRIV
+LogLevel VERBOSE
+
+# ── Allowed users ─────────────────────────────────────────────────────────────
+{% if ssh_allowed_users is defined and ssh_allowed_users | length > 0 %}
+AllowUsers {{ ssh_allowed_users | join(' ') }}
+{% endif %}
+
+# ── Banner ────────────────────────────────────────────────────────────────────
+Banner /etc/issue.net

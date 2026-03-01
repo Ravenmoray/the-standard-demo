@@ -1,0 +1,21 @@
+---
+# Role: hardening
+# CIS Level 1 baseline hardening for Oracle Linux 9 (ARM64/AMD64).
+# Applies SSH drop-in config, firewalld zones, and fail2ban for all nodes.
+# Tags: hardening, ssh, firewalld, fail2ban
+
+- name: Include SSH hardening tasks
+  ansible.builtin.import_tasks: ssh.yml
+  tags: [hardening, ssh]
+
+- name: Include firewalld tasks
+  ansible.builtin.import_tasks: firewalld.yml
+  tags: [hardening, firewalld]
+
+- name: Include fail2ban tasks
+  ansible.builtin.import_tasks: fail2ban.yml
+  tags: [hardening, fail2ban]
+
+- name: Include audit/misc hardening tasks
+  ansible.builtin.import_tasks: misc.yml
+  tags: [hardening, misc]

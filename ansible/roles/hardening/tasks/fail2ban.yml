@@ -1,0 +1,67 @@
+---
+# fail2ban tasks — SSH brute-force protection
+# Requires EPEL repository for Oracle Linux 9.
+
+- name: Install EPEL repository (low-RAM nodes — shell dnf)
+  ansible.builtin.shell: dnf install -y oracle-epel-release-el9 || dnf install -y epel-release
+  args:
+    executable: /bin/bash
+  when: low_ram | default(false) | bool
+  changed_when: false
+  tags: [hardening, fail2ban]
+
+- name: Install EPEL repository (standard nodes)
+  ansible.builtin.dnf:
+    name: oracle-epel-release-el9
+    state: present
+  failed_when: false  # Fall back to epel-release if oracle variant absent
+  when: not (low_ram | default(false) | bool)
+  tags: [hardening, fail2ban]
+
+- name: Install fail2ban (low-RAM nodes — shell dnf)
+  ansible.builtin.shell: dnf install -y fail2ban fail2ban-systemd
+  args:
+    executable: /bin/bash
+  when: low_ram | default(false) | bool
+  changed_when: false
+  tags: [hardening, fail2ban]
+
+- name: Install fail2ban (standard nodes)
+  ansible.builtin.dnf:
+    name:
+      - fail2ban
+      - fail2ban-systemd
+    state: present
+  when: not (low_ram | default(false) | bool)
+  tags: [hardening, fail2ban]
+
+- name: Deploy fail2ban jail.local for SSH
+  ansible.builtin.copy:
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      [DEFAULT]
+      bantime  = 3600
+      findtime = 600
+      maxretry = 5
+      banaction = firewallcmd-ipset
+      backend = systemd
+
+      [sshd]
+      enabled  = true
+      port     = ssh
+      logpath  = %(sshd_log)s
+      backend  = %(sshd_backend)s
+      maxretry = 3
+      bantime  = 86400
+  notify: Restart fail2ban
+  tags: [hardening, fail2ban]
+
+- name: Enable and start fail2ban
+  ansible.builtin.systemd:
+    name: fail2ban
+    enabled: true
+    state: started
+  tags: [hardening, fail2ban]

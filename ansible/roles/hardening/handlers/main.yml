@@ -1,0 +1,18 @@
+---
+# Handlers for hardening role
+
+- name: Restart sshd
+  ansible.builtin.systemd:
+    name: sshd
+    state: restarted
+
+- name: Restart fail2ban
+  ansible.builtin.systemd:
+    name: fail2ban
+    state: restarted
+
+- name: Restart auditd
+  ansible.builtin.service:
+    name: auditd
+    state: restarted
+    # auditd uses SysV init on some systems — use 'service' module for compatibility

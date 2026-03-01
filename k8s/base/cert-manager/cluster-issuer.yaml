@@ -1,0 +1,59 @@
+# ClusterIssuer: step-ca-acme
+#
+# This ClusterIssuer configures cert-manager to obtain certificates via ACME
+# from the internal step-ca ACME server.
+#
+# HTTP-01 challenge flow:
+#   1. cert-manager requests a cert for app.demo.internal from step-ca ACME
+#   2. step-ca issues an HTTP-01 challenge token
+#   3. cert-manager places the token at http://app.demo.internal/.well-known/acme-challenge/<token>
+#   4. step-ca fetches the token to validate domain control
+#   5. For step-ca to fetch the token, CoreDNS must resolve app.demo.internal
+#      to the ingress-nginx LoadBalancer IP (see coredns-patch.yaml)
+#   6. step-ca issues the certificate; cert-manager stores it as a K8s Secret
+#
+# IMPORTANT: Apply this AFTER step-ca is running and healthy.
+# The caBundle must contain the step-ca root CA cert (PEM-encoded, base64).
+# Retrieve it from: kubectl get configmap step-ca-root-cert -n step-ca -o jsonpath='{.data.root_ca\.crt}'
+# Then base64-encode: kubectl get ... | base64 -w0
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: step-ca-acme
+  labels:
+    app.kubernetes.io/name: cert-manager
+    app.kubernetes.io/version: "v1.16.3"
+    app.kubernetes.io/part-of: pki
+spec:
+  acme:
+    # step-ca ACME directory URL (in-cluster service)
+    # step-ca serves ACME at /acme/acme/directory
+    server: https://step-ca.step-ca.svc.cluster.local/acme/acme/directory
+    # Email used for ACME account registration (informational for internal CA)
+    email: admin@demo.internal
+    # Disable external account binding (not required for step-ca)
+    externalAccountBinding: {}
+    # The caBundle must contain the step-ca root CA certificate in PEM format,
+    # base64-encoded. cert-manager uses this to verify the ACME server's TLS cert.
+    # PLACEHOLDER: Replace with actual base64-encoded root CA cert after PKI bootstrap.
+    # Command to generate:
+    #   kubectl get configmap step-ca-root-cert -n step-ca \
+    #     -o jsonpath='{.data.root_ca\.crt}' | base64 -w0
+    caBundle: ""
+    privateKeySecretRef:
+      name: step-ca-acme-account-key
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+            podTemplate:
+              spec:
+                nodeSelector:
+                  kubernetes.io/arch: arm64
+                resources:
+                  requests:
+                    cpu: 10m
+                    memory: 16Mi
+                  limits:
+                    cpu: 50m
+                    memory: 32Mi

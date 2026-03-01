@@ -1,0 +1,58 @@
+---
+# K3s UpgradePlan — managed by Ansible (k3s-suc role)
+# Tracks the K3s stable release channel.
+# System Upgrade Controller will automatically upgrade nodes when a new stable
+# K3s version is published, draining and cordoning each node before upgrade.
+#
+# To upgrade manually to a specific version, change channel to a pinned version:
+#   version: v1.32.3+k3s1
+# To pause upgrades, set prepare.image to a non-existent image or delete this plan.
+
+apiVersion: upgrade.cattle.io/v1
+kind: Plan
+metadata:
+  name: k3s-server-upgrade
+  namespace: system-upgrade
+  labels:
+    k3s-upgrade: server
+spec:
+  concurrency: 1        # Upgrade one node at a time
+  cordon: true          # Cordon node before upgrading
+  channel: https://update.k3s.io/v1-release/channels/stable
+  upgrade:
+    image: rancher/k3s-upgrade
+  nodeSelector:
+    matchExpressions:
+      - key: k3s-upgrade
+        operator: NotIn
+        values: ["disabled", "false"]
+      - key: node-role.kubernetes.io/control-plane
+        operator: In
+        values: ["true"]
+---
+apiVersion: upgrade.cattle.io/v1
+kind: Plan
+metadata:
+  name: k3s-agent-upgrade
+  namespace: system-upgrade
+  labels:
+    k3s-upgrade: agent
+spec:
+  concurrency: 1        # Upgrade one worker at a time for rolling upgrade
+  cordon: true
+  prepare:
+    # Wait for server plan to complete before upgrading agents
+    image: rancher/k3s-upgrade
+    args:
+      - prepare
+      - k3s-server-upgrade
+  channel: https://update.k3s.io/v1-release/channels/stable
+  upgrade:
+    image: rancher/k3s-upgrade
+  nodeSelector:
+    matchExpressions:
+      - key: k3s-upgrade
+        operator: NotIn
+        values: ["disabled", "false"]
+      - key: node-role.kubernetes.io/control-plane
+        operator: DoesNotExist

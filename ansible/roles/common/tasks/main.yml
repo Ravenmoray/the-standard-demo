@@ -1,0 +1,90 @@
+---
+# Role: common
+# Applies to ALL nodes. Sets a minimal, consistent base before hardening.
+# Tags: common, packages, sysctl, timezone, ntp
+
+- name: Bootstrap Python 3 if absent (raw — works before Python is available)
+  ansible.builtin.raw: rpm -q python3 >/dev/null 2>&1 || dnf install -y python3
+  changed_when: false
+  tags: [common, packages]
+
+# ── Package installation ──────────────────────────────────────────────────────
+# CRITICAL: On nodes with low_ram=true (edge nodes, < 4 GB), use shell dnf
+# to avoid OOM from ansible.builtin.dnf importing the Python dnf library (~400 MB).
+# (LESSON 5.7 / CLAUDE.md Rule 8)
+
+- name: Install baseline packages (low-RAM nodes — shell dnf)
+  ansible.builtin.shell: |
+    dnf install -y {{ common_packages | join(' ') }}
+  args:
+    executable: /bin/bash
+  when: low_ram | default(false) | bool
+  changed_when: false
+  tags: [common, packages]
+
+- name: Install baseline packages (standard nodes — ansible.builtin.dnf)
+  ansible.builtin.dnf:
+    name: "{{ common_packages }}"
+    state: present
+  when: not (low_ram | default(false) | bool)
+  tags: [common, packages]
+
+# ── Timezone ──────────────────────────────────────────────────────────────────
+- name: Set system timezone
+  community.general.timezone:
+    name: "{{ timezone }}"
+  tags: [common, timezone]
+
+# ── Chrony NTP ────────────────────────────────────────────────────────────────
+- name: Deploy chrony configuration
+  ansible.builtin.template:
+    src: chrony.conf.j2
+    dest: /etc/chrony.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart chrony
+  tags: [common, ntp]
+
+- name: Enable and start chrony
+  ansible.builtin.systemd:
+    name: chronyd
+    enabled: true
+    state: started
+  tags: [common, ntp]
+
+# ── sysctl tuning ─────────────────────────────────────────────────────────────
+- name: Apply sysctl security and network tuning
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_file: /etc/sysctl.d/99-standard.conf
+    reload: true
+  loop: "{{ sysctl_settings | dict2items }}"
+  tags: [common, sysctl]
+
+# ── Disable unused kernel modules ─────────────────────────────────────────────
+- name: Blacklist uncommon network protocols (CIS 3.4)
+  ansible.builtin.copy:
+    dest: /etc/modprobe.d/99-standard-blacklist.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      install dccp /bin/false
+      install sctp /bin/false
+      install rds /bin/false
+      install tipc /bin/false
+  tags: [common, sysctl]
+
+# ── Disable core dumps ────────────────────────────────────────────────────────
+- name: Disable core dumps via limits.conf
+  ansible.builtin.copy:
+    dest: /etc/security/limits.d/99-nocoredump.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      * hard core 0
+  tags: [common, sysctl]

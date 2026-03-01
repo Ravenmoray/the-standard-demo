@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: step-ca
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  # Note: secret-template.yaml is documentation only; do NOT apply it.
+  # The step-ca-secrets Secret must be created by scripts/bootstrap-pki.sh
+  # before applying this kustomization.

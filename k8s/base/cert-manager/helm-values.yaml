@@ -1,0 +1,91 @@
+# cert-manager Helm values for K3s on ARM64
+# Deploy via: helm install cert-manager jetstack/cert-manager \
+#   --namespace cert-manager \
+#   --version v1.16.3 \
+#   --values k8s/base/cert-manager/helm-values.yaml
+#
+# Or deploy via ArgoCD Application (see k8s/argocd/cert-manager-app.yaml)
+#
+# Verify ARM64 support: cert-manager officially supports linux/arm64 from v1.5+
+# Chart repo: https://charts.jetstack.io
+# Image: quay.io/jetstack/cert-manager-controller (multi-arch)
+
+# Install CRDs as part of the Helm release.
+# Using --set crds.enabled=true is preferred over --set installCRDs=true (deprecated).
+crds:
+  enabled: true
+
+# Replica counts - single replica is fine for the PoC.
+# Increase to 2 for production HA.
+replicaCount: 1
+
+# Fully qualified image references (ARM64-compatible)
+image:
+  repository: quay.io/jetstack/cert-manager-controller
+  tag: v1.16.3
+  pullPolicy: IfNotPresent
+
+webhook:
+  replicaCount: 1
+  image:
+    repository: quay.io/jetstack/cert-manager-webhook
+    tag: v1.16.3
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+cainjector:
+  replicaCount: 1
+  image:
+    repository: quay.io/jetstack/cert-manager-cainjector
+    tag: v1.16.3
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+startupapicheck:
+  image:
+    repository: quay.io/jetstack/cert-manager-startupapicheck
+    tag: v1.16.3
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+# Resource requests and limits for the main controller
+resources:
+  requests:
+    cpu: 10m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# Enable Prometheus metrics endpoint
+prometheus:
+  enabled: true
+  servicemonitor:
+    enabled: false
+
+# DNS01 recursive nameservers - point to CoreDNS in-cluster for internal domain resolution.
+# This is critical for ACME HTTP-01 self-check when using an internal ACME server (step-ca).
+# cert-manager must resolve app.demo.internal to the ingress IP for HTTP-01 challenge validation.
+dns01RecursiveNameservers: "10.43.0.10:53"
+dns01RecursiveNameserversOnly: false
+
+# Log level (1=minimal, 5=debug)
+logLevel: 2

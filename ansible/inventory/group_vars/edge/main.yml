@@ -1,0 +1,19 @@
+---
+# group_vars for edge nodes (AMD Micro, 1 OCPU / 1 GB RAM)
+# These are the DMZ AMD x86_64 nodes running Caddy for TLS termination.
+#
+# CRITICAL: low_ram=true triggers shell-based dnf in common and hardening roles.
+# ansible.builtin.dnf imports the Python dnf library (~400 MB) and OOM-kills
+# on nodes with only 1 GB RAM. (LESSON 5.7 / CLAUDE.md Rule 8)
+low_ram: true
+
+# Edge nodes run Caddy for external TLS termination — allow HTTP/HTTPS
+# These ports must be opened by the hardening/firewalld role.
+# The edge-specific firewalld rules are applied via a separate task
+# included when low_ram=true or group membership is 'edge'.
+edge_firewalld_ports:
+  - 80/tcp    # HTTP (redirect to HTTPS)
+  - 443/tcp   # HTTPS (Caddy TLS termination)
+
+# Edge nodes do NOT need IP forwarding by default (not K3s nodes)
+# Sysctl defaults from all/main.yml apply (ip_forward: 0)

@@ -1,0 +1,131 @@
+---
+# Role: cilium
+# Installs Cilium CNI via Helm on the K3s cluster.
+#
+# CRITICAL ORDERING CONSTRAINT (CLAUDE.md Rule 10 / DEPLOYMENT-ORDER.md Step 5):
+#   Cilium MUST be installed before ANY workload pods are scheduled.
+#   K3s was installed with --flannel-backend=none which means pods will remain
+#   in Pending state with "network not ready" until Cilium is installed.
+#   Do NOT schedule workloads between k3s-server and this role.
+#
+# Runs on: ctrl (it101-ctrl-01 only) — delegates all kubectl/helm ops to control node.
+#
+# Tags: cilium, k3s
+
+- name: Install Helm if not present
+  ansible.builtin.shell: |
+    which helm >/dev/null 2>&1 || \
+      curl -sfL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  args:
+    executable: /bin/bash
+  changed_when: false
+  tags: [cilium, k3s]
+
+- name: Add Cilium Helm repository
+  ansible.builtin.command: >
+    helm repo add cilium https://helm.cilium.io/
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+  tags: [cilium, k3s]
+
+- name: Update Helm repositories
+  ansible.builtin.command: helm repo update
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+  tags: [cilium, k3s]
+
+- name: Check if Cilium is already installed
+  ansible.builtin.command: >
+    helm status cilium -n kube-system
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cilium_status
+  failed_when: false
+  changed_when: false
+  tags: [cilium, k3s]
+
+- name: Install Cilium via Helm
+  ansible.builtin.command: >
+    helm install cilium cilium/cilium
+    --version {{ cilium_chart_version }}
+    --namespace kube-system
+    --set kubeProxyReplacement=true
+    --set k8sServiceHost={{ ansible_host }}
+    --set k8sServicePort=6443
+    --set ipam.mode=kubernetes
+    --set operator.replicas=1
+    --set hubble.enabled=true
+    --set hubble.relay.enabled=false
+    --set hubble.ui.enabled=false
+    --set bpf.masquerade=true
+    --set nodeinit.enabled=true
+    --wait
+    --timeout 5m
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when: cilium_status.rc != 0
+  register: cilium_install
+  changed_when: cilium_install.rc == 0
+  tags: [cilium, k3s]
+
+- name: Wait for Cilium pods to be Running
+  ansible.builtin.command: >
+    k3s kubectl -n kube-system rollout status daemonset/cilium --timeout=300s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cilium_rollout
+  until: cilium_rollout.rc == 0
+  retries: 10
+  delay: 30
+  changed_when: false
+  tags: [cilium, k3s, verify]
+
+- name: Wait for Cilium operator to be Running
+  ansible.builtin.command: >
+    k3s kubectl -n kube-system rollout status deployment/cilium-operator --timeout=120s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cilium_op_rollout
+  until: cilium_op_rollout.rc == 0
+  retries: 5
+  delay: 15
+  changed_when: false
+  tags: [cilium, k3s, verify]
+
+- name: Install Cilium CLI for status verification
+  ansible.builtin.shell: |
+    CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
+    ARCH=$(uname -m)
+    case "$ARCH" in
+      x86_64) CLI_ARCH=amd64 ;;
+      aarch64) CLI_ARCH=arm64 ;;
+      *) CLI_ARCH=amd64 ;;
+    esac
+    if ! which cilium >/dev/null 2>&1; then
+      curl -sfL --fail \
+        "https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz" \
+        -o /tmp/cilium-cli.tar.gz
+      tar -xzf /tmp/cilium-cli.tar.gz -C /usr/local/bin/
+      chmod +x /usr/local/bin/cilium
+      rm -f /tmp/cilium-cli.tar.gz
+    fi
+  args:
+    executable: /bin/bash
+  changed_when: false
+  tags: [cilium, k3s]
+
+- name: Run cilium status check
+  ansible.builtin.command: cilium status --wait
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: cilium_status_check
+  changed_when: false
+  failed_when: cilium_status_check.rc != 0
+  tags: [cilium, k3s, verify]
+
+- name: Display Cilium status
+  ansible.builtin.debug:
+    var: cilium_status_check.stdout_lines
+  tags: [cilium, k3s, verify]

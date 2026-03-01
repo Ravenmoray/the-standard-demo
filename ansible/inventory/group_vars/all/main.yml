@@ -1,0 +1,87 @@
+---
+# Group vars for ALL hosts
+# Location: ansible/inventory/group_vars/all/main.yml
+# MUST be inside the inventory directory — not at ansible/group_vars/ (LESSON 5.8)
+
+# ── Domain ────────────────────────────────────────────────────────────────────
+internal_domain: demo.internal
+
+# ── Timezone ──────────────────────────────────────────────────────────────────
+timezone: UTC
+
+# ── NTP (chrony) ──────────────────────────────────────────────────────────────
+ntp_servers:
+  - 0.pool.ntp.org
+  - 1.pool.ntp.org
+  - 2.pool.ntp.org
+  - 3.pool.ntp.org
+
+# ── Package baseline ──────────────────────────────────────────────────────────
+# Packages installed on ALL nodes via common role.
+# Keep this minimal; role-specific packages live in each role.
+common_packages:
+  - vim-enhanced
+  - curl
+  - wget
+  - git
+  - jq
+  - unzip
+  - bash-completion
+  - bind-utils
+  - net-tools
+  - tcpdump
+  - lsof
+  - strace
+  - htop
+  - rsync
+  - chrony
+
+# ── Kernel sysctl tuning ──────────────────────────────────────────────────────
+# Security and networking sysctl values applied to ALL nodes.
+sysctl_settings:
+  # IPv4 source routing — disable
+  net.ipv4.conf.all.accept_source_route: 0
+  net.ipv4.conf.default.accept_source_route: 0
+  # ICMP redirects — disable accepting
+  net.ipv4.conf.all.accept_redirects: 0
+  net.ipv4.conf.default.accept_redirects: 0
+  net.ipv4.conf.all.secure_redirects: 0
+  net.ipv4.conf.default.secure_redirects: 0
+  # ICMP redirects — disable sending
+  net.ipv4.conf.all.send_redirects: 0
+  net.ipv4.conf.default.send_redirects: 0
+  # Log martian packets
+  net.ipv4.conf.all.log_martians: 1
+  net.ipv4.conf.default.log_martians: 1
+  # IP spoofing protection — reverse path filtering
+  net.ipv4.conf.all.rp_filter: 1
+  net.ipv4.conf.default.rp_filter: 1
+  # Disable IPv6 on non-cluster nodes (overridden per group if needed)
+  # net.ipv6.conf.all.disable_ipv6: 1  # Disabled — Cilium requires IPv6 capable stack
+  # SYN flood protection
+  net.ipv4.tcp_syncookies: 1
+  # Disable IP forwarding by default; k3s nodes override this
+  net.ipv4.ip_forward: 0
+  # Protect against SUID core dumps
+  fs.suid_dumpable: 0
+  # Randomize memory layout
+  kernel.randomize_va_space: 2
+  # Restrict dmesg to root
+  kernel.dmesg_restrict: 1
+  # Restrict ptrace
+  kernel.yama.ptrace_scope: 1
+
+# ── SSH ───────────────────────────────────────────────────────────────────────
+ssh_allowed_users:
+  - opc
+
+# ── firewalld zones ───────────────────────────────────────────────────────────
+# Default zone for server nodes; edge and k3s nodes have additional rules
+firewalld_default_zone: drop
+
+# ── K3s version ───────────────────────────────────────────────────────────────
+k3s_version: v1.32.2+k3s1
+
+# ── Cilium version ────────────────────────────────────────────────────────────
+cilium_version: "1.17.2"
+cilium_chart_version: "1.17.2"

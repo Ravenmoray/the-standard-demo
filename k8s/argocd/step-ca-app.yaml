@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: step-ca
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: step-ca
+    app.kubernetes.io/part-of: pki
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: http://forgejo.demo.internal/infrastructure/gitops-manifests.git
+    targetRevision: HEAD
+    path: k8s/base/step-ca
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: step-ca
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

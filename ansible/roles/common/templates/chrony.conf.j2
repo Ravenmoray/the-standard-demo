@@ -1,0 +1,19 @@
+# chrony.conf — managed by Ansible (common role)
+# Do not edit manually; changes will be overwritten.
+
+{% for server in ntp_servers %}
+pool {{ server }} iburst
+{% endfor %}
+
+# Record the rate at which the system clock gains/loses time.
+driftfile /var/lib/chrony/drift
+
+# Allow the system clock to be stepped in the first three updates
+# if its offset is larger than 1 second.
+makestep 1.0 3
+
+# Enable kernel synchronization of the real-time clock (RTC).
+rtcsync
+
+# Log tracking, measurements and statistics.
+logdir /var/log/chrony

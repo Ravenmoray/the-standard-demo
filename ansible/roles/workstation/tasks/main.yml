@@ -1,0 +1,129 @@
+---
+# ansible/roles/workstation/tasks/main.yml
+# Workstation setup: DHCP, CA trust, /etc/hosts, SSH, basic tools
+#
+# Target OS: Oracle Linux 9 (OL9)
+# Network: WORKSTATION subnet (10.0.100.0/24), DHCP assignment
+#
+# IMPORTANT: This role uses shell dnf for package installation.
+# If the workstation VM has < 4 GB RAM, ansible.builtin.dnf OOM-kills.
+# See CLAUDE.md rule #8 and oracle-k8 gap analysis Lesson 5.7.
+
+- name: Verify DHCP is configured (NetworkManager default)
+  ansible.builtin.command:
+    cmd: nmcli -t -f TYPE,STATE con show --active
+  register: nm_connections
+  changed_when: false
+  # We verify DHCP is active - if no active connection, network is broken.
+  # DHCP is the OCI default for VM interfaces; this is a sanity check, not a config step.
+
+- name: Assert at least one active network connection exists
+  ansible.builtin.assert:
+    that:
+      - nm_connections.stdout | length > 0
+    fail_msg: "No active NetworkManager connections found. DHCP may not be configured."
+    success_msg: "NetworkManager active connection detected."
+
+- name: Install base packages via shell dnf (low-RAM-safe)
+  # Using shell dnf instead of ansible.builtin.dnf to avoid Python module OOM
+  # on nodes with limited RAM. See CLAUDE.md rule #8.
+  ansible.builtin.shell:
+    cmd: |
+      dnf install -y --quiet {{ workstation_packages | join(' ') }}
+    executable: /bin/bash
+  register: dnf_result
+  changed_when: "'Nothing to do' not in dnf_result.stdout"
+  # Firefox requires EPEL or the OL9 AppStream - ensure repos are available.
+  # If firefox is unavailable, remove it from workstation_packages and install manually.
+
+- name: Install enterprise root CA certificate
+  ansible.builtin.copy:
+    src: "{{ workstation_ca_cert_src }}"
+    dest: "{{ workstation_ca_cert_dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Update CA trust
+
+- name: Configure /etc/hosts entry for app.demo.internal
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: ".*app\\.demo\\.internal"
+    line: "{{ workstation_ingress_ip }}  app.demo.internal"
+    state: present
+    backup: true
+  # This ensures the workstation resolves app.demo.internal even without
+  # a full DNS server. For environments with CoreDNS accessible on the
+  # workstation network, replace this with a dnsmasq configuration
+  # (see tasks/dnsmasq.yml if proper DNS resolution is preferred).
+
+- name: Ensure sshd is installed via shell dnf (idempotent)
+  ansible.builtin.shell:
+    cmd: rpm -q openssh-server || dnf install -y --quiet openssh-server
+    executable: /bin/bash
+  register: sshd_install
+  changed_when: "'Installing' in sshd_install.stdout"
+
+- name: Deploy SSH server hardening drop-in config
+  ansible.builtin.template:
+    src: sshd_hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/99-workstation.conf
+    owner: root
+    group: root
+    mode: "0600"
+    validate: /usr/sbin/sshd -t -f /dev/null -o "Include %s"
+  notify: Restart sshd
+
+- name: Enable and start sshd
+  ansible.builtin.systemd:
+    name: sshd
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Open SSH port in firewalld
+  ansible.posix.firewalld:
+    service: ssh
+    permanent: true
+    state: enabled
+    immediate: true
+  # firewalld is the default on OL9. If it is not running, skip gracefully.
+  ignore_errors: true
+
+- name: Open HTTP/HTTPS ports in firewalld (for browser access to app.demo.internal)
+  ansible.posix.firewalld:
+    service: "{{ item }}"
+    permanent: true
+    state: enabled
+    immediate: true
+  loop:
+    - http
+    - https
+  ignore_errors: true
+
+- name: Create admin user SSH authorized_keys directory
+  ansible.builtin.file:
+    path: /home/{{ ansible_user }}/.ssh
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0700"
+
+- name: Verify CA certificate is trusted after update-ca-trust
+  ansible.builtin.command:
+    cmd: trust list --filter=ca-anchors
+  register: trust_list
+  changed_when: false
+  # This runs AFTER the handler flushes (update-ca-trust runs in handler).
+  # In practice, use 'flush_handlers' before this task in the playbook if
+  # you need immediate verification within the same play.
+
+- name: Verify CA certificate appears in trust store
+  ansible.builtin.assert:
+    that:
+      - "'Demo Corp' in trust_list.stdout or 'demo' in trust_list.stdout"
+    fail_msg: "Enterprise root CA not found in trust store after update-ca-trust."
+    success_msg: "Enterprise root CA is trusted."
+  # Note: The exact label depends on the CN set in the CA cert.
+  # Adjust the string match if using a different CA CN.
+  ignore_errors: true

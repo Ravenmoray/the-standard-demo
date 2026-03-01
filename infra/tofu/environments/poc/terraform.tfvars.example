@@ -1,0 +1,151 @@
+# environments/poc/terraform.tfvars.example
+#
+# Copy this file to terraform.tfvars and fill in your values.
+# terraform.tfvars is gitignored — never commit it.
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# ============================================================
+# SENSITIVE VALUES — never commit terraform.tfvars to git
+# ============================================================
+
+# ---------------------------------------------------------------------------
+# OCI Authentication
+# Retrieve from: OCI Console → Profile → API Keys
+# ---------------------------------------------------------------------------
+
+tenancy_ocid = "ocid1.tenancy.oc1..aaaa..."
+user_ocid    = "ocid1.user.oc1..aaaa..."
+fingerprint  = "xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx"
+
+# Content of your OCI API private key (PEM format).
+# Alternative: set TF_VAR_private_key env var instead of storing here.
+private_key = <<-EOT
+  -----BEGIN RSA PRIVATE KEY-----
+  ...
+  -----END RSA PRIVATE KEY-----
+EOT
+
+region = "us-chicago-1"
+
+# ---------------------------------------------------------------------------
+# Compartment
+# OCI Console → Identity → Compartments → copy OCID
+# ---------------------------------------------------------------------------
+
+compartment_id = "ocid1.compartment.oc1..aaaa..."
+
+# ---------------------------------------------------------------------------
+# Object Storage
+# Retrieve namespace with: oci os ns get --query 'data' --raw-output
+# ---------------------------------------------------------------------------
+
+object_storage_namespace = "your-namespace-here"
+
+# Bucket names — must be globally unique within the namespace
+state_bucket_name  = "it101-poc-tofu-state"
+loki_bucket_name   = "it101-poc-loki-chunks"
+backup_bucket_name = "it101-poc-backups"
+
+# ---------------------------------------------------------------------------
+# SSH access
+# Paste the contents of your SSH public key (id_ed25519.pub or id_rsa.pub)
+# ---------------------------------------------------------------------------
+
+ssh_public_key = "ssh-ed25519 AAAA... user@host"
+
+# ---------------------------------------------------------------------------
+# OCI Image OCIDs — us-chicago-1
+#
+# Find current OCIDs for Oracle Linux 9:
+#
+#   # x86_64 (for AMD Micro edge nodes):
+#   oci compute image list \
+#     --compartment-id <TENANCY_OCID> \
+#     --operating-system "Oracle Linux" \
+#     --operating-system-version "9" \
+#     --sort-by TIMECREATED --sort-order DESC \
+#     --query 'data[?contains("display-name", `x86_64`)] | [0].id' \
+#     --raw-output
+#
+#   # aarch64 (for A2.Flex ARM64 nodes):
+#   oci compute image list \
+#     --compartment-id <TENANCY_OCID> \
+#     --operating-system "Oracle Linux" \
+#     --operating-system-version "9" \
+#     --sort-by TIMECREATED --sort-order DESC \
+#     --query 'data[?contains("display-name", `aarch64`)] | [0].id' \
+#     --raw-output
+# ---------------------------------------------------------------------------
+
+image_id_ol9_x86   = "ocid1.image.oc1.us-chicago-1.aaaa..."
+image_id_ol9_arm64 = "ocid1.image.oc1.us-chicago-1.aaaa..."
+
+# ---------------------------------------------------------------------------
+# Network (defaults match CLAUDE.md spec — only change if needed)
+# ---------------------------------------------------------------------------
+
+vcn_cidr         = "10.0.0.0/16"
+vcn_dns_label    = "it101poc"
+dmz_cidr         = "10.0.1.0/24"
+app_cidr         = "10.0.10.0/24"
+data_cidr        = "10.0.20.0/24"
+identity_cidr    = "10.0.30.0/24"
+management_cidr  = "10.0.40.0/24"
+workstation_cidr = "10.0.100.0/24"
+
+# Restrict SSH on MANAGEMENT subnet to your admin IP(s).
+# Leave empty to allow all (insecure; tighten before production).
+allowed_ssh_sources = [
+  # "203.0.113.10/32",   # admin workstation public IP
+  # "10.8.0.0/24",       # WireGuard client CIDR
+]
+
+# ---------------------------------------------------------------------------
+# Availability domains
+# Set to 0, 1, or 2. In us-chicago-1 there are typically 3 ADs.
+# Spreading edge nodes across ADs improves resilience (optional for PoC).
+# ---------------------------------------------------------------------------
+
+ad_index_edge        = 0
+ad_index_k3s         = 0
+ad_index_workstation = 0
+
+# ---------------------------------------------------------------------------
+# Compute shapes
+# IMPORTANT: Use A2.Flex for ARM instances — NOT A1.Flex.
+# A1.Flex is exhausted in us-chicago-1. A2.Flex has capacity but uses credits.
+# ---------------------------------------------------------------------------
+
+edge_shape   = "VM.Standard.E2.1.Micro"  # Always Free x86
+ctrl_shape   = "VM.Standard.A2.Flex"     # ARM64 — use credits
+worker_shape = "VM.Standard.A2.Flex"
+
+# K3s control node: 4 OCPU / 12 GB (runs K3s server + etcd + Cilium + ArgoCD)
+ctrl_ocpus     = 4
+ctrl_memory_gb = 12
+
+# K3s workers: 4 OCPU / 6 GB each
+worker_ocpus     = 4
+worker_memory_gb = 6
+
+# Workstation: 2 OCPU / 8 GB (GUI workstation; adjust to taste)
+workstation_shape     = "VM.Standard.A2.Flex"
+workstation_ocpus     = 2
+workstation_memory_gb = 8
+
+# ---------------------------------------------------------------------------
+# Boot volume sizes
+# ---------------------------------------------------------------------------
+
+edge_boot_volume_gb        = 50
+ctrl_boot_volume_gb        = 100
+worker_boot_volume_gb      = 100
+workstation_boot_volume_gb = 100
+
+# ---------------------------------------------------------------------------
+# Project metadata
+# ---------------------------------------------------------------------------
+
+project_name = "it101"
+environment  = "poc"

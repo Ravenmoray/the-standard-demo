@@ -1,0 +1,41 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-app
+  namespace: demo-app
+  labels:
+    app.kubernetes.io/name: demo-app
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/part-of: demo-corp
+  annotations:
+    # Use the step-ca ACME ClusterIssuer for certificate management.
+    # cert-manager watches this annotation and creates a Certificate resource.
+    # We also have an explicit Certificate resource (certificate.yaml) which is
+    # the preferred approach - the annotation is kept as a fallback reference.
+    cert-manager.io/cluster-issuer: step-ca-acme
+    # Force HTTPS redirect
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # Use real IP from upstream proxy (Caddy at edge)
+    nginx.ingress.kubernetes.io/use-forwarded-headers: "true"
+    nginx.ingress.kubernetes.io/proxy-real-ip-cidr: "10.0.1.0/24,10.0.10.0/24"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - app.demo.internal
+      # This secret is created by cert-manager (see certificate.yaml).
+      # The TLS cert in this secret is signed by step-ca (enterprise CA).
+      # Workstations that trust the enterprise root CA will see a valid cert.
+      secretName: demo-app-tls
+  rules:
+    - host: app.demo.internal
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: demo-app
+                port:
+                  number: 80

@@ -1,0 +1,100 @@
+---
+# ansible/playbooks/setup-workstation.yml
+# Configures the virtual workstation VM for demo.internal access.
+#
+# This playbook:
+#   1. Verifies DHCP network assignment (OCI default - should be active already)
+#   2. Installs enterprise root CA into OL9 system trust store
+#   3. Configures /etc/hosts for app.demo.internal -> ingress IP resolution
+#   4. Installs base tools: curl, vim, firefox, etc.
+#   5. Enables and hardens the SSH server
+#
+# Prerequisites:
+#   - scripts/bootstrap-pki.sh must have been run first (generates root CA cert)
+#   - root CA cert must be at: ansible/roles/workstation/files/demo-corp-root-ca.crt
+#   - workstation_ingress_ip must be set (in group_vars or as an extra var)
+#   - Ansible can SSH to the workstation (key-based auth, user: opc)
+#
+# Usage:
+#   # Set ingress IP (get from: kubectl get svc -n ingress-nginx)
+#   ansible-playbook playbooks/setup-workstation.yml \
+#     -e workstation_ingress_ip=10.0.10.100
+#
+#   # Or set in inventory/group_vars/workstations/vars.yml
+#
+# Verify: After running this playbook, on the workstation:
+#   curl -v https://app.demo.internal
+#   # Should return HTTP 200 with no certificate warnings
+
+- name: Configure virtual workstation
+  hosts: workstations
+  become: true
+  vars:
+    # Override workstation_ingress_ip here or pass as -e on CLI.
+    # The ingress IP is the external IP of the ingress-nginx LoadBalancer service.
+    # Retrieve it with: kubectl get svc -n ingress-nginx ingress-nginx-controller
+    #   -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+    workstation_ingress_ip: "{{ workstation_ingress_ip | default('INGRESS_IP_NOT_SET') }}"
+
+  pre_tasks:
+    - name: Validate ingress IP is configured
+      ansible.builtin.assert:
+        that:
+          - workstation_ingress_ip != 'INGRESS_IP_NOT_SET'
+          - workstation_ingress_ip | ansible.utils.ipaddr
+        fail_msg: >
+          workstation_ingress_ip is not set or not a valid IP address.
+          Pass it as: -e workstation_ingress_ip=<IP>
+          Get the IP from: kubectl get svc -n ingress-nginx ingress-nginx-controller
+            -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+        success_msg: "Ingress IP: {{ workstation_ingress_ip }}"
+
+    - name: Confirm root CA cert file exists on control node
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../roles/workstation/files/demo-corp-root-ca.crt"
+      register: ca_cert_stat
+      delegate_to: localhost
+      become: false
+
+    - name: Assert root CA cert file is present and not a placeholder
+      ansible.builtin.assert:
+        that:
+          - ca_cert_stat.stat.exists
+          - ca_cert_stat.stat.size > 500
+        fail_msg: >
+          Root CA certificate not found or is a placeholder.
+          Run: scripts/bootstrap-pki.sh
+          Then: cp .pki/root_ca.crt ansible/roles/workstation/files/demo-corp-root-ca.crt
+        success_msg: "Root CA certificate file found ({{ ca_cert_stat.stat.size }} bytes)."
+
+  roles:
+    - workstation
+
+  post_tasks:
+    - name: Flush handlers (ensure CA trust is updated before verification)
+      ansible.builtin.meta: flush_handlers
+
+    - name: Test HTTPS connectivity to app.demo.internal
+      ansible.builtin.command:
+        cmd: >
+          curl --silent --show-error --max-time 10
+          --write-out "HTTP/%{http_code}"
+          https://app.demo.internal/healthz
+      register: curl_test
+      changed_when: false
+      failed_when: false
+
+    - name: Report connectivity test result
+      ansible.builtin.debug:
+        msg: >
+          app.demo.internal connectivity test: {{ curl_test.stdout | default('FAILED') }}
+          {% if 'HTTP/200' in (curl_test.stdout | default('')) %}
+          SUCCESS - HTTPS with enterprise CA cert works with no certificate warnings.
+          {% elif curl_test.rc != 0 %}
+          FAILED - curl exit code {{ curl_test.rc }}. Error: {{ curl_test.stderr | default('') }}
+          Possible causes:
+            - ingress-nginx not yet deployed
+            - demo-app not yet deployed
+            - cert-manager has not yet issued the TLS certificate
+            - CA cert not yet trusted (check update-ca-trust ran successfully)
+          {% endif %}

@@ -1,0 +1,13 @@
+# PLACEHOLDER: This file must be replaced with the actual enterprise root CA certificate.
+#
+# Run scripts/bootstrap-pki.sh to generate the PKI material, then copy the root CA cert:
+#   cp .pki/root_ca.crt ansible/roles/workstation/files/demo-corp-root-ca.crt
+#
+# Do NOT commit the actual certificate if it contains sensitive organizational information.
+# The root CA certificate itself is public (it only contains the public key), but
+# verify your .gitignore excludes *.pem and *.crt if desired.
+#
+# Expected format:
+# -----BEGIN CERTIFICATE-----
+# <base64-encoded DER data>
+# -----END CERTIFICATE-----

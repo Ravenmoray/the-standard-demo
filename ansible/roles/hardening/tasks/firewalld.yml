@@ -1,0 +1,64 @@
+---
+# firewalld configuration tasks
+# Sets the default zone to 'drop' and opens only necessary ports per node type.
+# K3s nodes get additional ports opened via the k3s-server/k3s-agent roles.
+
+- name: Install firewalld (low-RAM nodes — shell dnf)
+  ansible.builtin.shell: dnf install -y firewalld
+  args:
+    executable: /bin/bash
+  when: low_ram | default(false) | bool
+  changed_when: false
+  tags: [hardening, firewalld]
+
+- name: Install firewalld (standard nodes)
+  ansible.builtin.dnf:
+    name: firewalld
+    state: present
+  when: not (low_ram | default(false) | bool)
+  tags: [hardening, firewalld]
+
+- name: Enable and start firewalld
+  ansible.builtin.systemd:
+    name: firewalld
+    enabled: true
+    state: started
+  tags: [hardening, firewalld]
+
+- name: Set default firewalld zone to drop
+  ansible.builtin.command: firewall-cmd --set-default-zone=drop
+  register: fwd_default_zone
+  changed_when: "'success' in fwd_default_zone.stdout"
+  tags: [hardening, firewalld]
+
+# Allow SSH on all nodes (required for Ansible itself)
+- name: Allow SSH in firewalld (permanent)
+  ansible.posix.firewalld:
+    service: ssh
+    zone: drop
+    permanent: true
+    state: enabled
+    immediate: true
+  tags: [hardening, firewalld]
+
+# Allow ICMP ping for monitoring and troubleshooting
+- name: Allow ICMP echo-request in firewalld (permanent)
+  ansible.posix.firewalld:
+    icmp_block_inversion: no
+    zone: drop
+    permanent: true
+    state: enabled
+    immediate: true
+  tags: [hardening, firewalld]
+
+- name: Allow ICMPv4 echo-request (ping) in drop zone
+  ansible.builtin.command: >
+    firewall-cmd --zone=drop --add-icmp-block-inversion --permanent
+  changed_when: false
+  failed_when: false
+  tags: [hardening, firewalld]
+
+- name: Reload firewalld to apply permanent rules
+  ansible.builtin.command: firewall-cmd --reload
+  changed_when: false
+  tags: [hardening, firewalld]

@@ -1,0 +1,19 @@
+---
+# ansible/roles/workstation/handlers/main.yml
+
+- name: Update CA trust
+  ansible.builtin.command:
+    cmd: update-ca-trust extract
+  # update-ca-trust reads from /etc/pki/ca-trust/source/anchors/ and
+  # updates the consolidated trust store at /etc/pki/ca-trust/extracted/.
+  # This makes the enterprise root CA trusted system-wide, including by:
+  #   - curl
+  #   - wget
+  #   - Firefox (if configured to use the system trust store)
+  #   - Any application that uses OpenSSL or NSS backed by the system store
+
+- name: Restart sshd
+  ansible.builtin.systemd:
+    name: sshd
+    state: restarted
+    daemon_reload: true

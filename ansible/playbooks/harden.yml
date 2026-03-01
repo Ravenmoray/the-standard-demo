@@ -1,0 +1,70 @@
+---
+# Playbook: harden.yml
+# Applies common baseline + hardening to ALL nodes in parallel.
+# Phase 1, Step 3 — must run before K3s bootstrap.
+#
+# Usage:
+#   ansible-playbook playbooks/harden.yml
+#   ansible-playbook playbooks/harden.yml --tags ssh          # SSH hardening only
+#   ansible-playbook playbooks/harden.yml --tags firewalld    # firewalld only
+#   ansible-playbook playbooks/harden.yml --limit edge        # Edge nodes only
+#   ansible-playbook playbooks/harden.yml --check --diff      # Dry-run
+#
+# Verify inventory before running:
+#   ansible-inventory --list
+# (group_vars must be at ansible/inventory/group_vars/ — LESSON 5.8)
+
+- name: Harden all nodes — common baseline + CIS Level 1
+  hosts: all
+  become: true
+  gather_facts: true
+  any_errors_fatal: false   # Don't abort all nodes if one fails
+
+  pre_tasks:
+    - name: Verify Python 3 is available
+      ansible.builtin.raw: python3 --version
+      changed_when: false
+      tags: always
+
+    - name: Gather facts (after Python bootstrap)
+      ansible.builtin.setup:
+      tags: always
+
+  roles:
+    - role: common
+      tags: [common]
+    - role: hardening
+      tags: [hardening]
+
+  post_tasks:
+    - name: Verify sshd is running after hardening
+      ansible.builtin.systemd:
+        name: sshd
+        state: started
+      check_mode: true
+      tags: [hardening, verify]
+
+    - name: Verify firewalld is running after hardening
+      ansible.builtin.systemd:
+        name: firewalld
+        state: started
+      check_mode: true
+      tags: [hardening, verify]
+
+    - name: Verify fail2ban is running after hardening
+      ansible.builtin.systemd:
+        name: fail2ban
+        state: started
+      check_mode: true
+      tags: [hardening, verify]
+
+    - name: Display hardening summary
+      ansible.builtin.debug:
+        msg: |
+          Hardening complete on {{ inventory_hostname }}.
+          - SSH drop-in: /etc/ssh/sshd_config.d/99-hardening.conf
+          - firewalld default zone: drop (SSH allowed)
+          - fail2ban: enabled (sshd jail, maxretry=3, bantime=86400s)
+          - auditd: running with CIS rule set
+          - sysctl: applied via /etc/sysctl.d/99-standard.conf
+      tags: [always]

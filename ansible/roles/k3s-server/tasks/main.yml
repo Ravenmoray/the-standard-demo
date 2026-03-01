@@ -1,0 +1,142 @@
+---
+# Role: k3s-server
+# Installs K3s in server (control plane) mode on it101-ctrl-01.
+#
+# Critical flags (MUST NOT be changed after installation):
+#   --flannel-backend=none     — disables built-in Flannel; required for Cilium CNI
+#   --disable-network-policy   — disables built-in network policy; Cilium takes over
+#   --disable=traefik          — disables built-in Traefik; we use ingress-nginx
+#   --tls-san                  — adds control node IP(s) to the API server certificate
+#
+# CLAUDE.md Rule 10: Cilium before workloads. --flannel-backend=none CANNOT be
+# changed after K3s install without tearing down and reinstalling the cluster.
+#
+# Tags: k3s, k3s-server
+
+- name: Check if K3s server is already installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s
+  register: k3s_binary
+  tags: [k3s, k3s-server]
+
+- name: Open firewalld ports for K3s API server and kubelet
+  ansible.posix.firewalld:
+    port: "{{ item }}"
+    zone: drop
+    permanent: true
+    state: enabled
+    immediate: true
+  loop:
+    - 6443/tcp    # Kubernetes API server
+    - 10250/tcp   # kubelet metrics
+    - 2379/tcp    # etcd client (for HA, harmless on single server)
+    - 2380/tcp    # etcd peer
+    - 8472/udp    # VXLAN (kept for safety even with Cilium)
+    - 4240/tcp    # Cilium health checks
+    - 4244/tcp    # Hubble relay
+    - 51871/udp   # WireGuard (for future Cilium WireGuard encryption)
+  tags: [k3s, k3s-server, firewalld]
+
+- name: Enable IP forwarding for K3s (required by kube-proxy replacement)
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    state: present
+    sysctl_file: /etc/sysctl.d/99-k3s.conf
+    reload: true
+  tags: [k3s, k3s-server, sysctl]
+
+- name: Enable IPv6 forwarding for Cilium
+  ansible.posix.sysctl:
+    name: net.ipv6.conf.all.forwarding
+    value: '1'
+    state: present
+    sysctl_file: /etc/sysctl.d/99-k3s.conf
+    reload: true
+  tags: [k3s, k3s-server, sysctl]
+
+- name: Deploy K3s server systemd drop-in for install args
+  ansible.builtin.template:
+    src: k3s-server.env.j2
+    dest: /etc/default/k3s
+    owner: root
+    group: root
+    mode: '0600'
+  tags: [k3s, k3s-server]
+
+- name: Install K3s server
+  ansible.builtin.shell: |
+    curl -sfL https://get.k3s.io | \
+      INSTALL_K3S_VERSION="{{ k3s_version }}" \
+      INSTALL_K3S_EXEC="server \
+        --flannel-backend=none \
+        --disable-network-policy \
+        --disable=traefik \
+        --tls-san={{ ansible_host }} \
+        --tls-san={{ ansible_default_ipv4.address }} \
+        --write-kubeconfig-mode=0640 \
+        --node-label=node-role.kubernetes.io/control-plane=true" \
+      sh -
+  args:
+    executable: /bin/bash
+  environment:
+    K3S_TOKEN: "{{ vault_k3s_token }}"
+  when: not k3s_binary.stat.exists
+  register: k3s_install
+  changed_when: k3s_install.rc == 0
+  notify: Restart k3s
+  tags: [k3s, k3s-server]
+
+- name: Enable and start k3s service
+  ansible.builtin.systemd:
+    name: k3s
+    enabled: true
+    state: started
+  tags: [k3s, k3s-server]
+
+- name: Wait for K3s API server to be ready
+  ansible.builtin.wait_for:
+    host: "{{ ansible_host }}"
+    port: 6443
+    timeout: 120
+    delay: 10
+  tags: [k3s, k3s-server, verify]
+
+- name: Wait for node to reach Ready state
+  ansible.builtin.command: >
+    k3s kubectl get node {{ inventory_hostname }}
+    --no-headers -o custom-columns=STATUS:.status.conditions[-1].type
+  register: node_ready
+  until: "'Ready' in node_ready.stdout"
+  retries: 20
+  delay: 10
+  changed_when: false
+  tags: [k3s, k3s-server, verify]
+
+- name: Retrieve K3s node token for agents
+  ansible.builtin.slurp:
+    src: /var/lib/rancher/k3s/server/node-token
+  register: k3s_node_token_raw
+  tags: [k3s, k3s-server]
+
+- name: Set k3s_node_token fact for use by agent role
+  ansible.builtin.set_fact:
+    k3s_node_token: "{{ k3s_node_token_raw.content | b64decode | trim }}"
+    k3s_server_url: "https://{{ ansible_host }}:6443"
+  tags: [k3s, k3s-server]
+
+- name: Fetch kubeconfig to control machine
+  ansible.builtin.fetch:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: "{{ playbook_dir }}/../kubeconfig/k3s.yaml"
+    flat: true
+  tags: [k3s, k3s-server]
+
+- name: Fix kubeconfig server address (replace 127.0.0.1 with actual IP)
+  ansible.builtin.replace:
+    path: "{{ playbook_dir }}/../kubeconfig/k3s.yaml"
+    regexp: 'https://127\.0\.0\.1:6443'
+    replace: "https://{{ ansible_host }}:6443"
+  delegate_to: localhost
+  become: false
+  tags: [k3s, k3s-server]

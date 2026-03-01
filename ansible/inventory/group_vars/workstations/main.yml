@@ -1,0 +1,39 @@
+---
+# ansible/inventory/group_vars/workstations/main.yml
+# Variables specific to the workstation group.
+# MUST be inside the inventory directory (LESSON 5.8).
+
+# Enterprise PKI / CA trust
+workstation_domain: demo.internal
+workstation_app_hostname: app.demo.internal
+
+# Ingress IP - the LoadBalancer IP of ingress-nginx.
+# Update this after ingress-nginx is deployed:
+#   kubectl get svc -n ingress-nginx ingress-nginx-controller \
+#     -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+# This value is also written to /etc/hosts for local resolution.
+workstation_ingress_ip: "10.0.10.100"
+
+# CA certificate paths
+workstation_ca_cert_src: "{{ playbook_dir }}/../roles/workstation/files/demo-corp-root-ca.crt"
+workstation_ca_cert_dest: "/etc/pki/ca-trust/source/anchors/demo-corp-root-ca.crt"
+
+# SSH settings (workstation is less restrictive than servers - X11 and password auth may be needed)
+workstation_ssh_port: 22
+workstation_ssh_permit_root_login: "no"
+# Password auth disabled - use SSH key from admin workstation.
+workstation_ssh_password_auth: "no"
+
+# Packages to install
+# NOTE: firefox requires OL9 AppStream or EPEL to be enabled.
+# If firefox is unavailable, remove it and install manually or via GUI package manager.
+workstation_packages:
+  - curl
+  - vim
+  - wget
+  - net-tools
+  - bind-utils
+  - firefox
+  - openssh-server
+  - bash-completion
+  - htop

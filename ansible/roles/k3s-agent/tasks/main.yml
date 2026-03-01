@@ -1,0 +1,79 @@
+---
+# Role: k3s-agent
+# Joins K3s worker nodes to the cluster using the server token.
+# Must run AFTER k3s-server role has set k3s_node_token and k3s_server_url facts.
+#
+# Tags: k3s, k3s-agent
+
+- name: Check if K3s agent is already installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s
+  register: k3s_binary
+  tags: [k3s, k3s-agent]
+
+- name: Open firewalld ports for K3s worker nodes
+  ansible.posix.firewalld:
+    port: "{{ item }}"
+    zone: drop
+    permanent: true
+    state: enabled
+    immediate: true
+  loop:
+    - 10250/tcp   # kubelet
+    - 8472/udp    # VXLAN (kept for safety)
+    - 4240/tcp    # Cilium health checks
+    - 51871/udp   # WireGuard (Cilium encryption)
+  tags: [k3s, k3s-agent, firewalld]
+
+- name: Enable IP forwarding for K3s agent
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    state: present
+    sysctl_file: /etc/sysctl.d/99-k3s.conf
+    reload: true
+  tags: [k3s, k3s-agent, sysctl]
+
+- name: Enable IPv6 forwarding for Cilium
+  ansible.posix.sysctl:
+    name: net.ipv6.conf.all.forwarding
+    value: '1'
+    state: present
+    sysctl_file: /etc/sysctl.d/99-k3s.conf
+    reload: true
+  tags: [k3s, k3s-agent, sysctl]
+
+- name: Install K3s agent
+  ansible.builtin.shell: |
+    curl -sfL https://get.k3s.io | \
+      INSTALL_K3S_VERSION="{{ k3s_version }}" \
+      K3S_URL="{{ hostvars[groups['ctrl'][0]]['k3s_server_url'] }}" \
+      K3S_TOKEN="{{ hostvars[groups['ctrl'][0]]['k3s_node_token'] }}" \
+      INSTALL_K3S_EXEC="agent \
+        --node-label=node-role.kubernetes.io/worker=true" \
+      sh -
+  args:
+    executable: /bin/bash
+  when: not k3s_binary.stat.exists
+  register: k3s_agent_install
+  changed_when: k3s_agent_install.rc == 0
+  notify: Restart k3s-agent
+  tags: [k3s, k3s-agent]
+
+- name: Enable and start k3s-agent service
+  ansible.builtin.systemd:
+    name: k3s-agent
+    enabled: true
+    state: started
+  tags: [k3s, k3s-agent]
+
+- name: Wait for worker node to appear in cluster
+  ansible.builtin.command: >
+    k3s kubectl get node {{ inventory_hostname }} --no-headers
+  delegate_to: "{{ groups['ctrl'][0] }}"
+  register: worker_node
+  until: worker_node.rc == 0
+  retries: 20
+  delay: 10
+  changed_when: false
+  tags: [k3s, k3s-agent, verify]

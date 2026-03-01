@@ -1,0 +1,36 @@
+# Certificate resource for app.demo.internal
+# cert-manager uses this to request a TLS certificate from step-ca via ACME.
+# The certificate is stored in the Secret referenced by the Ingress resource.
+#
+# Certificate lifecycle:
+#   - cert-manager watches this Certificate resource
+#   - 30 days before expiry, cert-manager automatically renews
+#   - cert-manager uses the step-ca-acme ClusterIssuer for issuance
+#   - The ACME HTTP-01 challenge requires ingress-nginx to be running
+#     and CoreDNS to resolve app.demo.internal (see scripts/configure-coredns.sh)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: demo-app-tls
+  namespace: demo-app
+  labels:
+    app.kubernetes.io/name: demo-app
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/part-of: demo-corp
+spec:
+  secretName: demo-app-tls
+  issuerRef:
+    name: step-ca-acme
+    kind: ClusterIssuer
+    group: cert-manager.io
+  commonName: app.demo.internal
+  dnsNames:
+    - app.demo.internal
+  # 90-day certificates (step-ca default for ACME; cert-manager renews at 2/3 lifetime)
+  duration: 2160h
+  renewBefore: 720h
+  # Private key configuration
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always

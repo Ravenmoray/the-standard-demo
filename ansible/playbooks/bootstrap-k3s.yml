@@ -1,0 +1,201 @@
+---
+# Playbook: bootstrap-k3s.yml
+# Phase 1, Step 5: K3s cluster bootstrap with Cilium CNI.
+#
+# ORDERING IS MANDATORY (DEPLOYMENT-ORDER.md Step 5):
+#   1. K3s server on ctrl (it101-ctrl-01)
+#   2. K3s agents on workers (it101-worker-01, it101-worker-02)
+#   3. Cilium CNI (must precede any workload pods)
+#   4. K3s System Upgrade Controller (pre-ArgoCD, no chicken-and-egg)
+#   5. Verify all nodes Ready, Cilium healthy, SUC running
+#
+# Prerequisites:
+#   - harden.yml must have completed successfully on all nodes
+#   - vault.yml must contain vault_k3s_token (encrypted with ansible-vault)
+#   - Network connectivity between ctrl and workers on APP subnet (10.0.10.0/24)
+#
+# Usage:
+#   ansible-playbook playbooks/bootstrap-k3s.yml
+#   ansible-playbook playbooks/bootstrap-k3s.yml --tags k3s-server   # Server only
+#   ansible-playbook playbooks/bootstrap-k3s.yml --tags cilium        # Cilium only
+#   ansible-playbook playbooks/bootstrap-k3s.yml --tags k3s-suc       # SUC only
+#   ansible-playbook playbooks/bootstrap-k3s.yml --tags verify        # Verify only
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Play 1: Install K3s server on control node
+# ─────────────────────────────────────────────────────────────────────────────
+- name: Bootstrap K3s server on control node
+  hosts: ctrl
+  become: true
+  gather_facts: true
+  serial: 1   # Only one control node; explicit serial for safety
+
+  roles:
+    - role: k3s-server
+      tags: [k3s, k3s-server]
+
+  post_tasks:
+    - name: Confirm K3s server is running
+      ansible.builtin.systemd:
+        name: k3s
+        state: started
+      check_mode: true
+      tags: [k3s, k3s-server, verify]
+
+    - name: Show all nodes visible from control plane
+      ansible.builtin.command: k3s kubectl get nodes -o wide
+      register: nodes_output
+      changed_when: false
+      tags: [k3s, k3s-server, verify]
+
+    - name: Display node list
+      ansible.builtin.debug:
+        var: nodes_output.stdout_lines
+      tags: [k3s, k3s-server, verify]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Play 2: Join worker nodes
+# ─────────────────────────────────────────────────────────────────────────────
+- name: Join K3s worker nodes to cluster
+  hosts: workers
+  become: true
+  gather_facts: true
+
+  # Workers join in parallel — no serial constraint needed
+  roles:
+    - role: k3s-agent
+      tags: [k3s, k3s-agent]
+
+  post_tasks:
+    - name: Confirm k3s-agent is running on worker
+      ansible.builtin.systemd:
+        name: k3s-agent
+        state: started
+      check_mode: true
+      tags: [k3s, k3s-agent, verify]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Play 3: Install Cilium CNI
+# MUST run before any workload pods. Pods remain Pending until Cilium is ready.
+# ─────────────────────────────────────────────────────────────────────────────
+- name: Install Cilium CNI (MUST precede all workload scheduling)
+  hosts: ctrl
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: cilium
+      tags: [cilium, k3s]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Play 4: Install K3s System Upgrade Controller (pre-ArgoCD)
+# Must be installed now — cannot be ArgoCD-managed (chicken-and-egg).
+# SUC manages automated K3s version upgrades via UpgradePlan CRDs.
+# (DEPLOYMENT-ORDER.md Step 5, item 6)
+# ─────────────────────────────────────────────────────────────────────────────
+- name: Install K3s System Upgrade Controller
+  hosts: ctrl
+  become: true
+  gather_facts: false
+
+  roles:
+    - role: k3s-suc
+      tags: [k3s, k3s-suc]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Play 5: Cluster-wide verification
+# ─────────────────────────────────────────────────────────────────────────────
+- name: Verify K3s cluster health — all nodes Ready, Cilium healthy
+  hosts: ctrl
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Wait for all nodes to reach Ready state
+      ansible.builtin.command: >
+        k3s kubectl wait --for=condition=Ready nodes --all --timeout=300s
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: nodes_ready
+      changed_when: false
+      tags: [verify]
+
+    - name: Display all nodes
+      ansible.builtin.command: k3s kubectl get nodes -o wide
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: all_nodes
+      changed_when: false
+      tags: [verify]
+
+    - name: Show node list
+      ansible.builtin.debug:
+        var: all_nodes.stdout_lines
+      tags: [verify]
+
+    - name: Display all kube-system pods
+      ansible.builtin.command: k3s kubectl get pods -n kube-system -o wide
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: kube_system_pods
+      changed_when: false
+      tags: [verify]
+
+    - name: Show kube-system pod list
+      ansible.builtin.debug:
+        var: kube_system_pods.stdout_lines
+      tags: [verify]
+
+    - name: Verify Cilium DaemonSet is fully available
+      ansible.builtin.command: >
+        k3s kubectl get daemonset cilium -n kube-system
+        -o jsonpath='{.status.numberAvailable}'
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: cilium_available
+      changed_when: false
+      tags: [verify, cilium]
+
+    - name: Verify Cilium pods match expected node count
+      ansible.builtin.assert:
+        that:
+          - cilium_available.stdout | int == groups['k3s_cluster'] | length
+        fail_msg: >
+          Cilium DaemonSet has {{ cilium_available.stdout }} available pods
+          but cluster has {{ groups['k3s_cluster'] | length }} nodes.
+          All nodes must have a running Cilium pod.
+        success_msg: >
+          Cilium DaemonSet OK — {{ cilium_available.stdout }} pods running
+          across {{ groups['k3s_cluster'] | length }} nodes.
+      tags: [verify, cilium]
+
+    - name: Run final cilium status check
+      ansible.builtin.command: cilium status
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: final_cilium_status
+      changed_when: false
+      tags: [verify, cilium]
+
+    - name: Display final Cilium status
+      ansible.builtin.debug:
+        var: final_cilium_status.stdout_lines
+      tags: [verify, cilium]
+
+    - name: Bootstrap complete — display summary
+      ansible.builtin.debug:
+        msg: |
+          K3s cluster bootstrap complete.
+
+          Control node: {{ groups['ctrl'] | join(', ') }}
+          Worker nodes: {{ groups['workers'] | join(', ') }}
+
+          K3s version:    {{ k3s_version }}
+          Cilium version: {{ cilium_version }}
+          SUC:            system-upgrade namespace, stable channel UpgradePlan active
+
+          Next step: Phase 1, Step 6 — OpenBao initialization.
+          See DEPLOYMENT-ORDER.md for the mandatory sequence.
+
+          KUBECONFIG fetched to: ansible/../kubeconfig/k3s.yaml
+      tags: [always]

@@ -1,0 +1,122 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: step-ca
+  namespace: step-ca
+  labels:
+    app.kubernetes.io/name: step-ca
+    app.kubernetes.io/version: "0.27.4"
+    app.kubernetes.io/part-of: pki
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: step-ca
+  # step-ca uses BadgerDB which does not support concurrent writers.
+  # Recreate strategy ensures only one pod runs at a time during updates.
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: step-ca
+        app.kubernetes.io/version: "0.27.4"
+        app.kubernetes.io/part-of: pki
+    spec:
+      # step-ca must run as non-root. The official image uses UID 1000 (step user).
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: step-ca
+          # smallstep/step-ca supports linux/arm64 and linux/amd64.
+          # Verify current tag at: https://hub.docker.com/r/smallstep/step-ca/tags
+          image: docker.io/smallstep/step-ca:0.27.4
+          imagePullPolicy: IfNotPresent
+          args:
+            - /home/step/config/ca.json
+          ports:
+            - name: https
+              containerPort: 9000
+              protocol: TCP
+          env:
+            - name: STEPPATH
+              value: /home/step
+          volumeMounts:
+            # Main config (ca.json)
+            - name: config
+              mountPath: /home/step/config
+              readOnly: true
+            # CA certificate files (root + intermediate certs)
+            - name: certs
+              mountPath: /home/step/certs
+              readOnly: true
+            # Intermediate CA private key (sensitive)
+            - name: secrets
+              mountPath: /home/step/secrets
+              readOnly: true
+            # BadgerDB persistent storage for certificate database
+            - name: db
+              mountPath: /home/step/db
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9000
+              scheme: HTTPS
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9000
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: config
+          configMap:
+            name: step-ca-config
+            items:
+              - key: ca.json
+                path: ca.json
+        - name: certs
+          projected:
+            sources:
+              - secret:
+                  name: step-ca-secrets
+                  items:
+                    - key: root_ca.crt
+                      path: root_ca.crt
+                    - key: intermediate_ca.crt
+                      path: intermediate_ca.crt
+        - name: secrets
+          secret:
+            secretName: step-ca-secrets
+            items:
+              - key: intermediate_ca.key
+                path: intermediate_ca.key
+            defaultMode: 0400
+        - name: db
+          persistentVolumeClaim:
+            claimName: step-ca-db
