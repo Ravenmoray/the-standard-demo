@@ -184,11 +184,21 @@ kubectl get svc -n ingress-nginx
 ## Layer 9: Demo App Deployment
 
 ```bash
-# Build the demo app image (on an ARM64 node or with multi-arch build)
+# Cross-compile the Go binary for ARM64 (from your local machine)
 cd app/
-docker build -t demo-app:1.0.0 .
-# Push to accessible registry or import into K3s nodes:
-# k3s ctr images import demo-app.tar
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o demo-app .
+
+# SCP binary and Dockerfile to the control node
+scp -J opc@<edge-ip> demo-app Dockerfile opc@<ctrl-ip>:~/
+
+# On the control node: build with buildah and import into K3s
+ssh -J opc@<edge-ip> opc@<ctrl-ip>
+sudo buildah build -t localhost/demo-app:1.0.0 .
+sudo buildah push localhost/demo-app:1.0.0 docker-archive:/tmp/demo-app.tar
+
+# Import image on all K3s nodes (ctrl + workers)
+sudo k3s ctr images import /tmp/demo-app.tar
+# Repeat on each worker node (SCP the tar, then import)
 
 # Deploy
 kubectl apply -k k8s/base/demo-app/

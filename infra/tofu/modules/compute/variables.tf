@@ -118,22 +118,27 @@ variable "ad_index_workstation" {
 # ---------------------------------------------------------------------------
 # Shape configuration
 #
-# Edge nodes: AMD Micro (VM.Standard.E2.1.Micro) – Always Free tier
-#   - 1 OCPU (x86_64), 1 GB RAM
-#   - Fixed shape; no flex variables required
-#
-# K3s control: A2.Flex (VM.Standard.A2.Flex) – ARM64 Ampere
-#   - NOTE: Use A2.Flex, NOT A1.Flex. A1.Flex is exhausted in us-chicago-1.
-#
-# K3s workers: A2.Flex (VM.Standard.A2.Flex)
-#
-# Workstation: A2.Flex (VM.Standard.A2.Flex)
+# All instances use A2.Flex (VM.Standard.A2.Flex) – ARM64 Ampere.
+# E2.1.Micro and A1.Flex are not available in us-chicago-1.
+# A2.Flex memory-to-OCPU ratio must be between 1:1 and 64:1.
 # ---------------------------------------------------------------------------
 
 variable "edge_shape" {
   type        = string
-  description = "OCI shape for AMD Micro edge nodes."
-  default     = "VM.Standard.E2.1.Micro"
+  description = "OCI shape for edge nodes."
+  default     = "VM.Standard.A2.Flex"
+}
+
+variable "edge_ocpus" {
+  type        = number
+  description = "Number of OCPUs for edge nodes (A2.Flex)."
+  default     = 1
+}
+
+variable "edge_memory_gb" {
+  type        = number
+  description = "Memory in GB for edge nodes (A2.Flex)."
+  default     = 4
 }
 
 variable "ctrl_shape" {

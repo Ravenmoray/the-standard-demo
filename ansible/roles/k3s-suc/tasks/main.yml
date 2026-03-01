@@ -12,9 +12,10 @@
 # Runs on: ctrl (it101-ctrl-01) only.
 # Tags: k3s, k3s-suc, suc
 
-- name: Check if system-upgrade-controller is already installed
+- name: Check if system-upgrade-controller is already deployed
   ansible.builtin.command: >
-    helm status system-upgrade-controller -n system-upgrade
+    /usr/local/bin/k3s kubectl get deployment system-upgrade-controller
+    -n system-upgrade --no-headers
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: suc_status
@@ -22,47 +23,22 @@
   changed_when: false
   tags: [k3s, k3s-suc]
 
-- name: Add Rancher SUC Helm repository
-  ansible.builtin.command: >
-    helm repo add rancher-charts https://charts.rancher.io
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  changed_when: false
-  tags: [k3s, k3s-suc]
-
-- name: Update Helm repositories
-  ansible.builtin.command: helm repo update
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  changed_when: false
-  tags: [k3s, k3s-suc]
-
-- name: Create system-upgrade namespace
-  ansible.builtin.command: >
-    k3s kubectl create namespace system-upgrade --dry-run=client -o yaml |
-    k3s kubectl apply -f -
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  changed_when: false
-  tags: [k3s, k3s-suc]
-
-- name: Install K3s System Upgrade Controller via Helm
-  ansible.builtin.command: >
-    helm install system-upgrade-controller rancher-charts/system-upgrade-controller
-    --namespace system-upgrade
-    --set serviceAccount.create=true
-    --wait
-    --timeout 3m
+- name: Install System Upgrade Controller from upstream manifest
+  ansible.builtin.shell: >
+    /usr/local/bin/k3s kubectl apply -f
+    https://github.com/rancher/system-upgrade-controller/releases/latest/download/system-upgrade-controller.yaml
+  args:
+    executable: /bin/bash
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   when: suc_status.rc != 0
   register: suc_install
-  changed_when: suc_install.rc == 0
+  changed_when: "'created' in suc_install.stdout"
   tags: [k3s, k3s-suc]
 
 - name: Wait for system-upgrade-controller deployment to be ready
   ansible.builtin.command: >
-    k3s kubectl rollout status deployment/system-upgrade-controller
+    /usr/local/bin/k3s kubectl rollout status deployment/system-upgrade-controller
     -n system-upgrade --timeout=120s
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
@@ -73,6 +49,18 @@
   changed_when: false
   tags: [k3s, k3s-suc, verify]
 
+- name: Wait for Plan CRD to be registered
+  ansible.builtin.command: >
+    /usr/local/bin/k3s kubectl get crd plans.upgrade.cattle.io
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: crd_check
+  until: crd_check.rc == 0
+  retries: 12
+  delay: 10
+  changed_when: false
+  tags: [k3s, k3s-suc]
+
 - name: Deploy initial K3s stable channel UpgradePlan
   ansible.builtin.template:
     src: k3s-upgradeplan.yml.j2
@@ -80,12 +68,15 @@
     mode: '0644'
   tags: [k3s, k3s-suc]
 
-- name: Apply K3s UpgradePlan CRD
+- name: Apply K3s UpgradePlan
   ansible.builtin.command: >
-    k3s kubectl apply -f /tmp/k3s-upgradeplan.yml
+    /usr/local/bin/k3s kubectl apply -f /tmp/k3s-upgradeplan.yml
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: upgradeplan_apply
+  until: upgradeplan_apply.rc == 0
+  retries: 5
+  delay: 5
   changed_when: "'configured' in upgradeplan_apply.stdout or 'created' in upgradeplan_apply.stdout"
   tags: [k3s, k3s-suc]
 
@@ -97,10 +88,13 @@
 
 - name: Verify UpgradePlan was created
   ansible.builtin.command: >
-    k3s kubectl get upgradeplan -n system-upgrade
+    /usr/local/bin/k3s kubectl get plan -n system-upgrade
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   register: upgradeplan_status
+  until: upgradeplan_status.rc == 0
+  retries: 5
+  delay: 5
   changed_when: false
   tags: [k3s, k3s-suc, verify]
 

@@ -13,8 +13,8 @@ Production-grade infrastructure demo on Oracle Cloud (OCI), implementing a subse
     Internet ──────────┤                                         │
          │             │  ┌─────────────────────────────────┐    │
          │             │  │ DMZ 10.0.1.0/24 (public)        │    │
-         │             │  │  it101-edge-01  AMD Micro 1/1   │    │
-         ├─── HTTPS ──►│  │  it101-edge-02  AMD Micro 1/1   │    │
+         │             │  │  it101-edge-01  A2.Flex 1/4     │    │
+         ├─── HTTPS ──►│  │  it101-edge-02  A2.Flex 1/4     │    │
          │             │  └────────────┬────────────────────┘    │
          │             │               │ HTTP/HTTPS              │
          │             │  ┌────────────▼────────────────────┐    │
@@ -73,8 +73,8 @@ The root CA certificate is distributed to the workstation via Ansible and instal
 
 | Node | Shape | OCPU | RAM | Subnet | Role |
 |------|-------|------|-----|--------|------|
-| it101-edge-01 | VM.Standard.E2.1.Micro | 1 | 1 GB | DMZ | Edge/Caddy |
-| it101-edge-02 | VM.Standard.E2.1.Micro | 1 | 1 GB | DMZ | Edge/Caddy |
+| it101-edge-01 | VM.Standard.A2.Flex | 1 | 4 GB | DMZ | Edge/jump host |
+| it101-edge-02 | VM.Standard.A2.Flex | 1 | 4 GB | DMZ | Edge/jump host |
 | it101-ctrl-01 | VM.Standard.A2.Flex | 4 | 12 GB | APP | K3s server |
 | it101-worker-01 | VM.Standard.A2.Flex | 4 | 6 GB | APP | K3s agent |
 | it101-worker-02 | VM.Standard.A2.Flex | 4 | 6 GB | APP | K3s agent |
@@ -82,9 +82,11 @@ The root CA certificate is distributed to the workstation via Ansible and instal
 
 ## Key Design Decisions
 
-1. **A2.Flex not A1.Flex** - A1.Flex (Always Free) is exhausted in us-chicago-1; A2.Flex uses trial credits
+1. **A2.Flex for all VMs** - A1.Flex (Always Free) and E2.1.Micro unavailable in us-chicago-1; A2.Flex (ARM64 Ampere) uses trial credits
 2. **K3s not OKE** - No cloud lock-in; portable to any IaaS or bare metal
 3. **Cilium not Flannel** - eBPF L7 policies, transparent mTLS, no sidecar overhead
 4. **step-ca not FreeIPA Dogtag** - Standalone CA, not tied to identity system
 5. **CoreDNS not BIND** - Embedded in K3s, no additional VM needed
 6. **Workstation on separate subnet** - Validates network segmentation; DHCP proves dynamic addressing
+7. **shell dnf not ansible.builtin.dnf** - Ansible dnf module OOM-kills on low-RAM nodes; shell dnf is safe
+8. **buildah not docker** - No Docker daemon needed; builds OCI images directly on ARM64 nodes

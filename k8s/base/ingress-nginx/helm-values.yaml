@@ -70,18 +70,4 @@ controller:
     kubernetes.io/arch: arm64
 
 defaultBackend:
-  enabled: true
-  image:
-    registry: registry.k8s.io
-    image: defaultbackend-arm64
-    tag: "1.5"
-    pullPolicy: IfNotPresent
-  resources:
-    requests:
-      cpu: 5m
-      memory: 16Mi
-    limits:
-      cpu: 50m
-      memory: 32Mi
-  nodeSelector:
-    kubernetes.io/arch: arm64
+  enabled: false

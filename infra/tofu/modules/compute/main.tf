@@ -2,15 +2,15 @@
 # OCI compute instances for the it101 PoC.
 #
 # VM inventory:
-#   it101-poc-edge-01   AMD Micro  DMZ subnet     x86_64   Public IP  Caddy edge
-#   it101-poc-edge-02   AMD Micro  DMZ subnet     x86_64   Public IP  Caddy edge
+#   it101-poc-edge-01   A2.Flex    DMZ subnet     aarch64  Public IP  Caddy edge
+#   it101-poc-edge-02   A2.Flex    DMZ subnet     aarch64  Public IP  Caddy edge
 #   it101-poc-ctrl-01   A2.Flex    APP subnet     aarch64  Private    K3s server
 #   it101-poc-worker-01 A2.Flex    APP subnet     aarch64  Private    K3s agent
 #   it101-poc-worker-02 A2.Flex    APP subnet     aarch64  Private    K3s agent
 #   it101-poc-ws-01     A2.Flex    WORKSTATION    aarch64  Private    Workstation
 #
-# NOTE: A2.Flex is used for ARM instances, NOT A1.Flex.
-# A1.Flex is chronically exhausted in us-chicago-1.
+# NOTE: A2.Flex is used for ALL instances (ARM64 Ampere).
+# E2.1.Micro and A1.Flex are not available in us-chicago-1.
 # A2.Flex uses trial/paid credits but has available capacity.
 
 data "oci_identity_availability_domains" "ads" {
@@ -24,7 +24,7 @@ locals {
 }
 
 # ---------------------------------------------------------------------------
-# Edge nodes — AMD Micro x86_64 in DMZ
+# Edge nodes — A2.Flex ARM64 in DMZ
 # Two nodes for redundancy; Caddy TLS termination + reverse proxy
 # ---------------------------------------------------------------------------
 
@@ -36,12 +36,14 @@ resource "oci_core_instance" "edge" {
   display_name        = "${local.name_prefix}-edge-0${count.index + 1}"
   shape               = var.edge_shape
 
-  # AMD Micro is a fixed shape — no flex config needed
-  # (Attempting to set shape_config on a fixed shape will error)
+  shape_config {
+    ocpus         = var.edge_ocpus
+    memory_in_gbs = var.edge_memory_gb
+  }
 
   source_details {
     source_type             = "image"
-    source_id               = var.image_id_ol9_x86
+    source_id               = var.image_id_ol9_arm64
     boot_volume_size_in_gbs = var.edge_boot_volume_gb
   }
 
@@ -67,7 +69,7 @@ resource "oci_core_instance" "edge" {
     role        = "edge"
     k3s_role    = "none"
     node_index  = tostring(count.index + 1)
-    arch        = "x86_64"
+    arch        = "aarch64"
   })
 }
 

@@ -38,6 +38,9 @@ override.tf.json
 # Ansible
 *.retry
 
+# Compiled binaries
+app/demo-app
+
 # OS
 .DS_Store
 Thumbs.db

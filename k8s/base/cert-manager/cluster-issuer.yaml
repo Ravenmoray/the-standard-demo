@@ -31,15 +31,13 @@ spec:
     server: https://step-ca.step-ca.svc.cluster.local/acme/acme/directory
     # Email used for ACME account registration (informational for internal CA)
     email: admin@demo.internal
-    # Disable external account binding (not required for step-ca)
-    externalAccountBinding: {}
     # The caBundle must contain the step-ca root CA certificate in PEM format,
     # base64-encoded. cert-manager uses this to verify the ACME server's TLS cert.
     # PLACEHOLDER: Replace with actual base64-encoded root CA cert after PKI bootstrap.
     # Command to generate:
     #   kubectl get configmap step-ca-root-cert -n step-ca \
     #     -o jsonpath='{.data.root_ca\.crt}' | base64 -w0
-    caBundle: ""
+    caBundle: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJlakNDQVNHZ0F3SUJBZ0lRYUJkZHlLbFhuQkppeWZRSVZmZFRJVEFLQmdncWhrak9QUVFEQWpBY01Sb3cKR0FZRFZRUURFeEZFWlcxdklFTnZjbkFnVW05dmRDQkRRVEFlRncweU5qQXpNREV4TmpRek5USmFGdzB6TmpBeQpNamN4TmpRek5USmFNQnd4R2pBWUJnTlZCQU1URVVSbGJXOGdRMjl5Y0NCU2IyOTBJRU5CTUZrd0V3WUhLb1pJCnpqMENBUVlJS29aSXpqMERBUWNEUWdBRXlzMWJTeEQ3SkhtN3BYR3dpUm8wTUhxUWt0T2pyQWwxaUF0OTh6TlIKZllEc044L1BzeWdFb2s0eFlac2hES1p5T2pjektHQlJDTTFjd1VIbjJQZHF0S05GTUVNd0RnWURWUjBQQVFILwpCQVFEQWdFR01CSUdBMVVkRXdFQi93UUlNQVlCQWY4Q0FRRXdIUVlEVlIwT0JCWUVGRzBrWVZxdFhZOXVlbmFDCml6YVUyRlgvZWZlVU1Bb0dDQ3FHU000OUJBTUNBMGNBTUVRQ0lDb0s1dU9RQWxRNnlXN3FrdUlEWWVHUExBdS8KUW5oNm14NjVIMlgyNVNKbUFpQkRVUnFDVTkwNWRSd0xEemxkc29CVHNJc1R5dXFnc29lTkc1YjFvdEF0d0E9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg=="
     privateKeySecretRef:
       name: step-ca-acme-account-key
     solvers:

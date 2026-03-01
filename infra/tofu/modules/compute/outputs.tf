@@ -99,7 +99,7 @@ output "ansible_inventory" {
         public_ip  = inst.public_ip
         private_ip = inst.private_ip
         group      = "edge"
-        arch       = "x86_64"
+        arch       = "aarch64"
       }
     }
     k3s_control = {

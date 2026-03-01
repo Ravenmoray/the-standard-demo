@@ -37,7 +37,11 @@ ClientAliveCountMax 2
 
 # ── Forwarding restrictions ───────────────────────────────────────────────────
 AllowAgentForwarding no
+{% if allow_tcp_forwarding | default(false) %}
+AllowTcpForwarding yes
+{% else %}
 AllowTcpForwarding no
+{% endif %}
 X11Forwarding no
 PermitTunnel no
 

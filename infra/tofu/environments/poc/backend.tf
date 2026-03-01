@@ -60,29 +60,22 @@
 # Store both keys in your password manager or Ansible Vault.
 # =============================================================================
 
-terraform {
-  backend "s3" {
-    # OCI Object Storage S3-compatible endpoint
-    # Replace <NAMESPACE> and <REGION> with actual values
-    endpoint = "https://<NAMESPACE>.compat.objectstorage.us-chicago-1.oraclecloud.com"
-    region   = "us-chicago-1"
-
-    bucket = "it101-poc-tofu-state"
-    key    = "environments/poc/terraform.tfstate"
-
-    # OCI does not support native S3 bucket versioning checks via this API
-    skip_region_validation      = true
-    skip_credentials_validation = true
-    skip_metadata_api_check     = true
-    skip_requesting_account_id = true
-
-    # Force path-style (required for OCI S3 compatibility)
-    force_path_style = true
-
-    # access_key and secret_key are provided via:
-    #   - Environment variables: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
-    #   - -backend-config flags at 'tofu init' time
-    #   - A .s3.tfbackend file (add to .gitignore)
-    # DO NOT hardcode credentials here.
-  }
-}
+# Using local state for bootstrap. Migrate to OCI Object Storage S3 backend
+# after initial deployment using:
+#   tofu init -migrate-state -backend-config=.s3.tfbackend
+#
+# See comments above for full remote state setup procedure.
+#
+# terraform {
+#   backend "s3" {
+#     endpoint = "https://axtv2ka4towg.compat.objectstorage.us-chicago-1.oraclecloud.com"
+#     region   = "us-chicago-1"
+#     bucket   = "it101-poc-tofu-state"
+#     key      = "environments/poc/terraform.tfstate"
+#     skip_region_validation      = true
+#     skip_credentials_validation = true
+#     skip_metadata_api_check     = true
+#     skip_requesting_account_id  = true
+#     force_path_style            = true
+#   }
+# }

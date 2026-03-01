@@ -31,12 +31,23 @@ spec:
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        - name: copy-config
+          image: docker.io/library/busybox:1.36
+          command: ['sh', '-c', 'cp /config-ro/ca.json /config-rw/ca.json']
+          volumeMounts:
+            - name: config-ro
+              mountPath: /config-ro
+              readOnly: true
+            - name: config
+              mountPath: /config-rw
       containers:
         - name: step-ca
           # smallstep/step-ca supports linux/arm64 and linux/amd64.
           # Verify current tag at: https://hub.docker.com/r/smallstep/step-ca/tags
           image: docker.io/smallstep/step-ca:0.27.4
           imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/step-ca"]
           args:
             - /home/step/config/ca.json
           ports:
@@ -47,10 +58,9 @@ spec:
             - name: STEPPATH
               value: /home/step
           volumeMounts:
-            # Main config (ca.json)
+            # Main config (ca.json) — writable copy from initContainer
             - name: config
               mountPath: /home/step/config
-              readOnly: true
             # CA certificate files (root + intermediate certs)
             - name: certs
               mountPath: /home/step/certs
@@ -90,16 +100,15 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
-            capabilities:
-              drop:
-                - ALL
       volumes:
-        - name: config
+        - name: config-ro
           configMap:
             name: step-ca-config
             items:
               - key: ca.json
                 path: ca.json
+        - name: config
+          emptyDir: {}
         - name: certs
           projected:
             sources:

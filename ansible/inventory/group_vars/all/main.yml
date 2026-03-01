@@ -32,7 +32,6 @@ common_packages:
   - tcpdump
   - lsof
   - strace
-  - htop
   - rsync
   - chrony
 

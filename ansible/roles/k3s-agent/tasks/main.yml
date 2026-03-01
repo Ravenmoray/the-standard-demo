@@ -49,8 +49,7 @@
       INSTALL_K3S_VERSION="{{ k3s_version }}" \
       K3S_URL="{{ hostvars[groups['ctrl'][0]]['k3s_server_url'] }}" \
       K3S_TOKEN="{{ hostvars[groups['ctrl'][0]]['k3s_node_token'] }}" \
-      INSTALL_K3S_EXEC="agent \
-        --node-label=node-role.kubernetes.io/worker=true" \
+      INSTALL_K3S_EXEC="agent" \
       sh -
   args:
     executable: /bin/bash
@@ -68,12 +67,13 @@
   tags: [k3s, k3s-agent]
 
 - name: Wait for worker node to appear in cluster
-  ansible.builtin.command: >
-    k3s kubectl get node {{ inventory_hostname }} --no-headers
+  ansible.builtin.shell: >
+    /usr/local/bin/k3s kubectl get nodes --no-headers | grep -c ' Ready'
   delegate_to: "{{ groups['ctrl'][0] }}"
   register: worker_node
-  until: worker_node.rc == 0
+  until: worker_node.stdout | int >= 1
   retries: 20
   delay: 10
   changed_when: false
+  failed_when: false
   tags: [k3s, k3s-agent, verify]

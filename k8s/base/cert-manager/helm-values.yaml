@@ -87,5 +87,6 @@ prometheus:
 dns01RecursiveNameservers: "10.43.0.10:53"
 dns01RecursiveNameserversOnly: false
 
-# Log level (1=minimal, 5=debug)
-logLevel: 2
+# Log verbosity (1=minimal, 5=debug)
+global:
+  logLevel: 2

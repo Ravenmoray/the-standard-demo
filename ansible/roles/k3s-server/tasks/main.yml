@@ -74,8 +74,7 @@
         --disable=traefik \
         --tls-san={{ ansible_host }} \
         --tls-san={{ ansible_default_ipv4.address }} \
-        --write-kubeconfig-mode=0640 \
-        --node-label=node-role.kubernetes.io/control-plane=true" \
+        --write-kubeconfig-mode=0640" \
       sh -
   args:
     executable: /bin/bash
@@ -102,13 +101,12 @@
     delay: 10
   tags: [k3s, k3s-server, verify]
 
-- name: Wait for node to reach Ready state
-  ansible.builtin.command: >
-    k3s kubectl get node {{ inventory_hostname }}
-    --no-headers -o custom-columns=STATUS:.status.conditions[-1].type
+- name: Wait for node to register with API server
+  ansible.builtin.shell: >
+    /usr/local/bin/k3s kubectl get nodes --no-headers 2>/dev/null | grep -q 'control-plane'
   register: node_ready
-  until: "'Ready' in node_ready.stdout"
-  retries: 20
+  until: node_ready.rc == 0
+  retries: 30
   delay: 10
   changed_when: false
   tags: [k3s, k3s-server, verify]

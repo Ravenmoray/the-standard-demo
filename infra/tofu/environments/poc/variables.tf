@@ -215,8 +215,20 @@ variable "ad_index_workstation" {
 
 variable "edge_shape" {
   type        = string
-  description = "Shape for AMD Micro edge nodes (Always Free)."
-  default     = "VM.Standard.E2.1.Micro"
+  description = "Shape for edge nodes."
+  default     = "VM.Standard.A2.Flex"
+}
+
+variable "edge_ocpus" {
+  type        = number
+  description = "OCPUs for edge nodes."
+  default     = 1
+}
+
+variable "edge_memory_gb" {
+  type        = number
+  description = "Memory (GB) for edge nodes."
+  default     = 4
 }
 
 variable "ctrl_shape" {

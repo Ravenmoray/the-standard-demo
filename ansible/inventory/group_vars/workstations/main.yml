@@ -12,7 +12,7 @@ workstation_app_hostname: app.demo.internal
 #   kubectl get svc -n ingress-nginx ingress-nginx-controller \
 #     -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 # This value is also written to /etc/hosts for local resolution.
-workstation_ingress_ip: "10.0.10.100"
+workstation_ingress_ip: "10.0.10.9"
 
 # CA certificate paths
 workstation_ca_cert_src: "{{ playbook_dir }}/../roles/workstation/files/demo-corp-root-ca.crt"
@@ -33,7 +33,5 @@ workstation_packages:
   - wget
   - net-tools
   - bind-utils
-  - firefox
   - openssh-server
   - bash-completion
-  - htop

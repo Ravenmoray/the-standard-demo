@@ -182,10 +182,23 @@ resource "oci_core_security_list" "dmz" {
     }
   }
 
-  # Ingress: SSH from MANAGEMENT subnet only
+  # Ingress: SSH from MANAGEMENT subnet
   ingress_security_rules {
     description = "SSH from MANAGEMENT subnet"
     source      = var.management_cidr
+    protocol    = "6"
+    stateless   = false
+
+    tcp_options {
+      min = 22
+      max = 22
+    }
+  }
+
+  # Ingress: SSH from internet (edge nodes serve as jump hosts for PoC)
+  ingress_security_rules {
+    description = "SSH from internet (edge nodes are jump hosts)"
+    source      = "0.0.0.0/0"
     protocol    = "6"
     stateless   = false
 
@@ -230,6 +243,19 @@ resource "oci_core_security_list" "app" {
   ingress_security_rules {
     description = "SSH from MANAGEMENT subnet"
     source      = var.management_cidr
+    protocol    = "6"
+    stateless   = false
+
+    tcp_options {
+      min = 22
+      max = 22
+    }
+  }
+
+  # Ingress: SSH from DMZ (edge nodes serve as jump hosts)
+  ingress_security_rules {
+    description = "SSH from DMZ subnet (jump host)"
+    source      = var.dmz_cidr
     protocol    = "6"
     stateless   = false
 
@@ -323,6 +349,44 @@ resource "oci_core_security_list" "app" {
   ingress_security_rules {
     description = "NodePort range from DMZ"
     source      = var.dmz_cidr
+    protocol    = "6"
+    stateless   = false
+
+    tcp_options {
+      min = 30000
+      max = 32767
+    }
+  }
+
+  # Ingress: HTTP/HTTPS from WORKSTATION subnet (workstation accesses demo app)
+  ingress_security_rules {
+    description = "HTTP from WORKSTATION subnet"
+    source      = var.workstation_cidr
+    protocol    = "6"
+    stateless   = false
+
+    tcp_options {
+      min = 80
+      max = 80
+    }
+  }
+
+  ingress_security_rules {
+    description = "HTTPS from WORKSTATION subnet"
+    source      = var.workstation_cidr
+    protocol    = "6"
+    stateless   = false
+
+    tcp_options {
+      min = 443
+      max = 443
+    }
+  }
+
+  # Ingress: NodePort range from WORKSTATION (for K3s klipper-lb)
+  ingress_security_rules {
+    description = "NodePort range from WORKSTATION"
+    source      = var.workstation_cidr
     protocol    = "6"
     stateless   = false
 
@@ -607,6 +671,19 @@ resource "oci_core_security_list" "workstation" {
     }
   }
 
+  # SSH from DMZ (edge nodes serve as jump hosts)
+  ingress_security_rules {
+    description = "SSH from DMZ subnet (jump host)"
+    source      = var.dmz_cidr
+    protocol    = "6"
+    stateless   = false
+
+    tcp_options {
+      min = 22
+      max = 22
+    }
+  }
+
   # RDP (3389) from MANAGEMENT (optional; for GUI workstation sessions)
   ingress_security_rules {
     description = "RDP (3389) from MANAGEMENT subnet"
@@ -662,9 +739,7 @@ resource "oci_core_dhcp_options" "workstation" {
   # Domain name search list uses the VCN's DNS domain
   options {
     type        = "DomainNameServer"
-    server_type = "VcnLocalPlusCustom"
-    # OCI VCN resolver first, then quad-9 as fallback
-    custom_dns_servers = ["9.9.9.9", "149.112.112.112"]
+    server_type = "VcnLocalPlusInternet"
   }
 
   options {

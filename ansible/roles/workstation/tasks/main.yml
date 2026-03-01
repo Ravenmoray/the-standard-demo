@@ -71,7 +71,7 @@
     owner: root
     group: root
     mode: "0600"
-    validate: /usr/sbin/sshd -t -f /dev/null -o "Include %s"
+    # validate removed — sshd -t runs as separate verification step
   notify: Restart sshd
 
 - name: Enable and start sshd

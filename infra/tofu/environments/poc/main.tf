@@ -101,6 +101,8 @@ module "compute" {
 
   # Shape configuration
   edge_shape        = var.edge_shape
+  edge_ocpus        = var.edge_ocpus
+  edge_memory_gb    = var.edge_memory_gb
   ctrl_shape        = var.ctrl_shape
   ctrl_ocpus        = var.ctrl_ocpus
   ctrl_memory_gb    = var.ctrl_memory_gb

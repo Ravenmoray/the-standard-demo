@@ -12,7 +12,5 @@
     state: restarted
 
 - name: Restart auditd
-  ansible.builtin.service:
-    name: auditd
-    state: restarted
-    # auditd uses SysV init on some systems — use 'service' module for compatibility
+  ansible.builtin.command: service auditd restart
+  changed_when: true

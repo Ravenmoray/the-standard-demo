@@ -10,12 +10,24 @@
   changed_when: false
   tags: [hardening, fail2ban]
 
+- name: Enable EPEL repository (low-RAM nodes)
+  ansible.builtin.shell: dnf config-manager --set-enabled ol9_developer_EPEL
+  args:
+    executable: /bin/bash
+  when: low_ram | default(false) | bool
+  changed_when: false
+  tags: [hardening, fail2ban]
+
 - name: Install EPEL repository (standard nodes)
   ansible.builtin.dnf:
     name: oracle-epel-release-el9
     state: present
-  failed_when: false  # Fall back to epel-release if oracle variant absent
   when: not (low_ram | default(false) | bool)
+  tags: [hardening, fail2ban]
+
+- name: Enable EPEL repository
+  ansible.builtin.command: dnf config-manager --set-enabled ol9_developer_EPEL
+  changed_when: false
   tags: [hardening, fail2ban]
 
 - name: Install fail2ban (low-RAM nodes — shell dnf)

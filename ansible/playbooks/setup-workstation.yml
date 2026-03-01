@@ -29,19 +29,12 @@
 - name: Configure virtual workstation
   hosts: workstations
   become: true
-  vars:
-    # Override workstation_ingress_ip here or pass as -e on CLI.
-    # The ingress IP is the external IP of the ingress-nginx LoadBalancer service.
-    # Retrieve it with: kubectl get svc -n ingress-nginx ingress-nginx-controller
-    #   -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
-    workstation_ingress_ip: "{{ workstation_ingress_ip | default('INGRESS_IP_NOT_SET') }}"
-
   pre_tasks:
     - name: Validate ingress IP is configured
       ansible.builtin.assert:
         that:
           - workstation_ingress_ip != 'INGRESS_IP_NOT_SET'
-          - workstation_ingress_ip | ansible.utils.ipaddr
+          - (workstation_ingress_ip | ansible.utils.ipaddr) | length > 0
         fail_msg: >
           workstation_ingress_ip is not set or not a valid IP address.
           Pass it as: -e workstation_ingress_ip=<IP>

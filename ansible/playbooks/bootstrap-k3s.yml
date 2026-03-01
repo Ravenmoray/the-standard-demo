@@ -43,7 +43,7 @@
       tags: [k3s, k3s-server, verify]
 
     - name: Show all nodes visible from control plane
-      ansible.builtin.command: k3s kubectl get nodes -o wide
+      ansible.builtin.command: /usr/local/bin/k3s kubectl get nodes -o wide
       register: nodes_output
       changed_when: false
       tags: [k3s, k3s-server, verify]
@@ -113,7 +113,7 @@
   tasks:
     - name: Wait for all nodes to reach Ready state
       ansible.builtin.command: >
-        k3s kubectl wait --for=condition=Ready nodes --all --timeout=300s
+        /usr/local/bin/k3s kubectl wait --for=condition=Ready nodes --all --timeout=300s
       environment:
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
       register: nodes_ready
@@ -121,7 +121,7 @@
       tags: [verify]
 
     - name: Display all nodes
-      ansible.builtin.command: k3s kubectl get nodes -o wide
+      ansible.builtin.command: /usr/local/bin/k3s kubectl get nodes -o wide
       environment:
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
       register: all_nodes
@@ -134,7 +134,7 @@
       tags: [verify]
 
     - name: Display all kube-system pods
-      ansible.builtin.command: k3s kubectl get pods -n kube-system -o wide
+      ansible.builtin.command: /usr/local/bin/k3s kubectl get pods -n kube-system -o wide
       environment:
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
       register: kube_system_pods
@@ -148,7 +148,7 @@
 
     - name: Verify Cilium DaemonSet is fully available
       ansible.builtin.command: >
-        k3s kubectl get daemonset cilium -n kube-system
+        /usr/local/bin/k3s kubectl get daemonset cilium -n kube-system
         -o jsonpath='{.status.numberAvailable}'
       environment:
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
@@ -170,7 +170,7 @@
       tags: [verify, cilium]
 
     - name: Run final cilium status check
-      ansible.builtin.command: cilium status
+      ansible.builtin.command: /usr/local/bin/cilium status
       environment:
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
       register: final_cilium_status
